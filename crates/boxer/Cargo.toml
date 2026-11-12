@@ -1,0 +1,12 @@
+[package]
+name = "agents-boxer"
+version = "0.0.0"
+edition = "2024"
+description = "Sandbox container runner and resource supervisor for distributed agents"
+license = "Apache-2.0"
+
+[dependencies]
+agents-protocol = { path = "../protocol" }
+tokio = { version = "1.43", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"

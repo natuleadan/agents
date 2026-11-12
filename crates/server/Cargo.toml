@@ -1,0 +1,12 @@
+[package]
+name = "agents-server"
+version = "0.0.0"
+edition = "2024"
+description = "Orchestrator server exposing the API, coordinating workflows, database, Valkey, NATS and autocron"
+license = "Apache-2.0"
+
+[dependencies]
+agents-protocol = { path = "../protocol" }
+tokio = { version = "1.43", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"
