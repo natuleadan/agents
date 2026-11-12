@@ -1,0 +1,12 @@
+[package]
+name = "agents-client"
+version = "0.0.0"
+edition = "2024"
+description = "Multi-device client interface for interacting with the agents orchestrator"
+license = "Apache-2.0"
+
+[dependencies]
+agents-protocol = { path = "../protocol" }
+tokio = { version = "1.43", features = ["full"] }
+tracing = "0.1"
+tracing-subscriber = "0.3"

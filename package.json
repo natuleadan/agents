@@ -1,0 +1,27 @@
+{
+  "name": "natuleadan-agents",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Distributed agent harness with modular Boxer sandbox execution, autocron, and Ironic API orchestrator",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/natuleadan/agents"
+  },
+  "license": "Apache-2.0",
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "prepare": "husky",
+    "release:plan": "node tools/release-plan.ts",
+    "release:prepare": "node tools/release-plan.ts --apply",
+    "release:check": "node tools/release-plan.ts --check"
+  },
+  "devDependencies": {
+    "@commitlint/cli": "^20.5.3",
+    "@commitlint/config-conventional": "^20.5.3",
+    "husky": "^9.1.7"
+  },
+  "packageManager": "pnpm@12.3.4"
+}
