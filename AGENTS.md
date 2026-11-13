@@ -20,7 +20,7 @@ Traefik ephemeral app previews, and multi-platform NSH clients.
 | `crates/client` | `client-core`, `client-tui`, and multi-platform `nsh` GUI (`Server` & `Third-Party` modes) |
 | `deploy/scripts/` | Reusable POSIX/Bash VPS hardening and service bootstrap scripts (never hardcoded inside Rust) |
 | `tools/` | Workspace validation (`validate-repo.ts`) and release planning (`release-plan.ts`) |
-| `.github/` | CODEOWNERS, Dependabot, CodeQL, CI validation, and multi-platform release workflows |
+| `.github/` | CODEOWNERS, Dependabot, CI validation, and multi-platform release workflows |
 
 ## Development
 
