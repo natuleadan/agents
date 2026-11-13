@@ -4,6 +4,7 @@
 
 pub mod artifact;
 pub mod auth;
+pub mod node;
 pub mod preview;
 pub mod rpc;
 pub mod sandbox;
@@ -19,6 +20,7 @@ pub use auth::{
     ApiKeyMetadata, ApiKeyScope, CreateApiKeyRequest, LoginRequest, RefreshRequest, TokenPair,
     UserClaims,
 };
+pub use node::{BoxerNodeAnnouncement, NodeStatus, PreviewRouteSync};
 pub use preview::TraefikPreviewRoute;
 pub use rpc::{
     CursorPage, ExecutionScope, METHOD_CATALOG, PageRequest, RequestId, RpcError, RpcErrorCode,

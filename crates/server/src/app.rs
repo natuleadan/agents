@@ -60,6 +60,9 @@ use crate::{
             controller::{McpHttpState, protected_mcp_router},
             services::McpHostService,
         },
+        nodes::{
+            NodeHttpState, NodeRegistryService, NodeRegistryStore, NodesModule, traefik_lazy_router,
+        },
         sessions::{
             SessionsModule,
             repositories::{InMemorySessionRepository, PgSessionRepository, SessionStore},
@@ -91,6 +94,7 @@ impl Module for InfraModule {
             .provider(ProviderDefinition::value(AdmissionStore::default()))
             .provider(ProviderDefinition::value(AuditStore::default()))
             .provider(ProviderDefinition::value(AuthStore::default()))
+            .provider(ProviderDefinition::value(NodeRegistryStore::default()))
             .provider(ProviderDefinition::value(SessionStore::default()))
             .provider(ProviderDefinition::value(TaskStore::default()))
             .provider(ProviderDefinition::value(StreamStore::default()))
@@ -103,6 +107,7 @@ impl Module for InfraModule {
             .export::<AdmissionStore>()
             .export::<AuditStore>()
             .export::<AuthStore>()
+            .export::<NodeRegistryStore>()
             .export::<SessionStore>()
             .export::<TaskStore>()
             .export::<StreamStore>()
@@ -120,6 +125,7 @@ impl Module for InfraModule {
     InfraModule,
     AuditModule,
     AuthModule,
+    NodesModule,
     SessionsModule,
     TasksModule,
     SwarmModule,
@@ -270,9 +276,11 @@ pub async fn build_application(
 
     let lazy_gateway = Arc::new(OnceLock::<GatewayHttpState>::new());
     let lazy_mcp = Arc::new(OnceLock::<McpHttpState>::new());
+    let lazy_nodes = Arc::new(OnceLock::<NodeHttpState>::new());
 
     let gw_cell = Arc::clone(&lazy_gateway);
     let mcp_cell = Arc::clone(&lazy_mcp);
+    let nodes_cell = Arc::clone(&lazy_nodes);
 
     let openapi_config = OpenApiConfig::new("agents-server API", env!("CARGO_PKG_VERSION"))
         .description("Distributed agent harness control plane built on Ironic")
@@ -312,7 +320,7 @@ pub async fn build_application(
                 .request_body_limit(4 * 1024 * 1024)
                 .request_timeout(Duration::from_secs(30))
                 .configure_router(move |router| {
-                    mount_native_stream_and_mcp_routes(router, gw_cell, mcp_cell)
+                    mount_native_stream_and_mcp_routes(router, gw_cell, mcp_cell, nodes_cell)
                 })
                 .with_openapi(openapi_config)
                 .swagger_ui("/docs"),
@@ -336,6 +344,11 @@ pub async fn build_application(
         .resolve::<McpHostService>()
         .await
         .map_err(|e| ServerError::Internal(e.to_string()))?;
+    let nodes = app
+        .container()
+        .resolve::<NodeRegistryService>()
+        .await
+        .map_err(|e| ServerError::Internal(e.to_string()))?;
 
     auth.seed_admin_if_configured().await?;
 
@@ -344,6 +357,7 @@ pub async fn build_application(
         gateway,
     });
     let _ = lazy_mcp.set(McpHttpState { auth, mcp });
+    let _ = lazy_nodes.set(NodeHttpState { service: nodes });
 
     Ok(app)
 }
@@ -387,14 +401,18 @@ fn mount_native_stream_and_mcp_routes(
     router: Router,
     gw_cell: Arc<OnceLock<GatewayHttpState>>,
     mcp_cell: Arc<OnceLock<McpHttpState>>,
+    nodes_cell: Arc<OnceLock<NodeHttpState>>,
 ) -> Router {
-    router.merge(gateway_lazy_router(gw_cell)).route(
-        "/mcp",
-        axum::routing::post(move |req: AxumRequest<Body>| {
-            let mcp_cell = Arc::clone(&mcp_cell);
-            async move { dispatch_lazy_mcp(req, mcp_cell).await }
-        }),
-    )
+    router
+        .merge(gateway_lazy_router(gw_cell))
+        .merge(traefik_lazy_router(nodes_cell))
+        .route(
+            "/mcp",
+            axum::routing::post(move |req: AxumRequest<Body>| {
+                let mcp_cell = Arc::clone(&mcp_cell);
+                async move { dispatch_lazy_mcp(req, mcp_cell).await }
+            }),
+        )
 }
 
 async fn dispatch_lazy_mcp(req: AxumRequest<Body>, cell: Arc<OnceLock<McpHttpState>>) -> Response {

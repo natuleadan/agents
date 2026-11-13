@@ -12,8 +12,8 @@ use std::{
 };
 
 use agents_protocol::{
-    CodecId, EventEnvelope, FencingToken, StopReason, StreamPayload, TaskRequest, TaskResult,
-    TaskState, TaskStreamEvent, WorkerStatus,
+    BoxerNodeAnnouncement, CodecId, EventEnvelope, FencingToken, NodeStatus, PreviewRouteSync,
+    StopReason, StreamPayload, TaskRequest, TaskResult, TaskState, TaskStreamEvent, WorkerStatus,
 };
 use futures_util::StreamExt;
 use serde::Deserialize;
@@ -417,5 +417,43 @@ impl BoxerDaemon {
             },
         };
         let _ = self.bus.publish_stream_event(&env).await;
+    }
+
+    /// Announces this Boxer worker onto the private VLAN discovery bus (`boxer.nodes.*`).
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BoxerError::Bus`] if the bus publication fails.
+    pub async fn announce_node(
+        &self,
+        vlan_ip: &str,
+        status: NodeStatus,
+    ) -> Result<BoxerNodeAnnouncement, BoxerError> {
+        let active_boxes = self
+            .config
+            .max_concurrent_boxes
+            .saturating_sub(self.semaphore.available_permits());
+        let announcement = BoxerNodeAnnouncement {
+            node_id: self.config.node_id.clone(),
+            vlan_ip: vlan_ip.to_owned(),
+            runtime: self.config.default_profile.runtime.clone(),
+            isolation: self.config.default_profile.isolation.clone(),
+            max_concurrent_boxes: self.config.max_concurrent_boxes,
+            active_boxes,
+            status,
+            last_heartbeat_ms: now_ms(),
+            ttl_seconds: 60,
+        };
+        self.bus.publish_node_announcement(&announcement).await?;
+        Ok(announcement)
+    }
+
+    /// Publishes or revokes a distributed preview route sync message for Traefik HTTP discovery.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`BoxerError::Bus`] if synchronization fails.
+    pub async fn sync_preview_route(&self, sync: &PreviewRouteSync) -> Result<(), BoxerError> {
+        self.bus.publish_preview_sync(sync).await
     }
 }
