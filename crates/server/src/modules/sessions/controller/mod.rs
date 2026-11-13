@@ -35,7 +35,8 @@ impl SessionsController {
         tag = "Sessions",
         security = "bearerAuth"
     )]
-    #[resp(200, "Created session")]
+    #[body(json = CreateSessionDto)]
+    #[resp(200, "Created session", json = SessionEntity)]
     async fn create(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -53,7 +54,7 @@ impl SessionsController {
         tag = "Sessions",
         security = "bearerAuth"
     )]
-    #[resp(200, "Cursor-paginated sessions")]
+    #[resp(200, "Cursor-paginated sessions", json = CursorPage<SessionEntity>)]
     async fn list(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -71,7 +72,7 @@ impl SessionsController {
         tag = "Sessions",
         security = "bearerAuth"
     )]
-    #[resp(200, "Session record")]
+    #[resp(200, "Session record", json = SessionEntity)]
     #[resp(403, "BOLA ownership violation")]
     async fn get(
         &self,
@@ -89,7 +90,8 @@ impl SessionsController {
         tag = "Sessions",
         security = "bearerAuth"
     )]
-    #[resp(200, "Updated session")]
+    #[body(json = UpdateSessionDto)]
+    #[resp(200, "Updated session", json = SessionEntity)]
     #[resp(409, "Optimistic concurrency conflict")]
     async fn update(
         &self,

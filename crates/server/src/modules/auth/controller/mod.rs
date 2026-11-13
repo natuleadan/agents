@@ -29,7 +29,7 @@ impl AuthController {
     #[post("/register")]
     #[api(summary = "Register a user account", tag = "Auth")]
     #[body(json = RegisterDto)]
-    #[resp(200, "Registered actor")]
+    #[resp(200, "Registered actor", json = AuthenticatedActor)]
     #[resp(409, "Duplicate email")]
     #[resp(422, "Validation error")]
     async fn register(
@@ -44,7 +44,7 @@ impl AuthController {
     #[post("/login")]
     #[api(summary = "Authenticate with email and password", tag = "Auth")]
     #[body(json = LoginDto)]
-    #[resp(200, "Access and refresh token pair")]
+    #[resp(200, "Access and refresh token pair", json = TokenPair)]
     #[resp(401, "Invalid credentials")]
     async fn login(&self, #[body] dto: LoginDto) -> Result<Json<TokenPair>, HttpError> {
         validate_dto(&dto)?;
@@ -55,7 +55,7 @@ impl AuthController {
     #[post("/refresh")]
     #[api(summary = "Rotate an opaque refresh token", tag = "Auth")]
     #[body(json = RefreshDto)]
-    #[resp(200, "Fresh access and refresh token pair")]
+    #[resp(200, "Fresh access and refresh token pair", json = TokenPair)]
     #[resp(401, "Invalid or revoked refresh token")]
     async fn refresh(&self, #[body] dto: RefreshDto) -> Result<Json<TokenPair>, HttpError> {
         validate_dto(&dto)?;
@@ -80,7 +80,7 @@ impl AuthController {
         tag = "Auth",
         security = "bearerAuth"
     )]
-    #[resp(200, "Current actor")]
+    #[resp(200, "Current actor", json = AuthenticatedActor)]
     async fn me(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -95,7 +95,8 @@ impl AuthController {
         tag = "Auth",
         security = "bearerAuth"
     )]
-    #[resp(200, "Created API key")]
+    #[body(json = CreateApiKeyDto)]
+    #[resp(200, "Created API key", json = CreatedApiKeyResponse)]
     async fn create_api_key(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -114,7 +115,7 @@ impl AuthController {
         tag = "Auth",
         security = "bearerAuth"
     )]
-    #[resp(200, "API key metadata list")]
+    #[resp(200, "API key metadata list", json = Vec<ApiKeyMetadata>)]
     async fn list_api_keys(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

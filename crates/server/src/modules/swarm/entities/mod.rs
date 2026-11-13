@@ -1,6 +1,7 @@
 //! Swarm domain entities representing delegated subagents and mediated messages.
 
 use agents_protocol::{AgentHandoff, PermissionMask};
+use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -18,6 +19,27 @@ pub struct SwarmHandoffEntity {
     pub delegated_mask: PermissionMask,
     pub goal: String,
     pub created_at: u64,
+}
+
+impl OpenApiSchema for SwarmHandoffEntity {
+    fn openapi_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "SwarmHandoffEntity",
+            "required": ["handoffId", "sessionId", "ownerId", "parentAgentId", "childAgentId", "delegatedMask", "goal", "createdAt"],
+            "properties": {
+                "handoffId": { "type": "string", "example": "hnd_01j7xyz" },
+                "sessionId": { "type": "string", "example": "ses_01j7sess" },
+                "ownerId": { "type": "string", "example": "usr_01j7abc" },
+                "parentAgentId": { "type": "string", "example": "leader" },
+                "childAgentId": { "type": "string", "example": "worker-01" },
+                "worktreeBranch": { "type": "string", "nullable": true, "example": "swarm/worker-01" },
+                "delegatedMask": PermissionMask::openapi_schema(),
+                "goal": { "type": "string", "example": "Analyze security audit logs" },
+                "createdAt": { "type": "integer", "example": 1731513600 }
+            }
+        })
+    }
 }
 
 impl SwarmHandoffEntity {
@@ -46,4 +68,24 @@ pub struct MediatedSwarmMessage {
     pub signature: String,
     pub mediated_by_user: Option<String>,
     pub emitted_at_ms: u64,
+}
+
+impl OpenApiSchema for MediatedSwarmMessage {
+    fn openapi_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "MediatedSwarmMessage",
+            "required": ["messageId", "sessionId", "fromAgentId", "payload", "signature", "emittedAtMs"],
+            "properties": {
+                "messageId": { "type": "string", "example": "msg_01j7xyz" },
+                "sessionId": { "type": "string", "example": "ses_01j7sess" },
+                "fromAgentId": { "type": "string", "example": "agent-worker" },
+                "targetAgentId": { "type": "string", "nullable": true, "example": "agent-leader" },
+                "payload": { "type": "object", "example": { "result": "done" } },
+                "signature": { "type": "string", "example": "sig_hmac256" },
+                "mediatedByUser": { "type": "string", "nullable": true },
+                "emittedAtMs": { "type": "integer", "example": 1731513600000_u64 }
+            }
+        })
+    }
 }

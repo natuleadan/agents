@@ -22,7 +22,8 @@ impl WebhookIngressController {
         summary = "Trigger dynamic workflow via webhook slug",
         tag = "Workflows"
     )]
-    #[resp(200, "Workflow run triggered by webhook")]
+    #[body(json = WebhookPayloadDto)]
+    #[resp(200, "Workflow run triggered by webhook", json = WorkflowRunEntity)]
     async fn trigger_slug(
         &self,
         #[param] slug: String,

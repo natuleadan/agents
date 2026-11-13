@@ -41,7 +41,8 @@ impl WorkflowsController {
         tag = "Workflows",
         security = "bearerAuth"
     )]
-    #[resp(200, "Created workflow")]
+    #[body(json = CreateWorkflowDto)]
+    #[resp(200, "Created workflow", json = WorkflowEntity)]
     async fn create(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -59,7 +60,7 @@ impl WorkflowsController {
         tag = "Workflows",
         security = "bearerAuth"
     )]
-    #[resp(200, "Workflow list")]
+    #[resp(200, "Workflow list", json = Vec<WorkflowEntity>)]
     async fn list(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -75,7 +76,8 @@ impl WorkflowsController {
         tag = "Workflows",
         security = "bearerAuth"
     )]
-    #[resp(200, "Approved workflow")]
+    #[body(json = ApproveWorkflowDto)]
+    #[resp(200, "Approved workflow", json = WorkflowEntity)]
     async fn approve(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -94,7 +96,8 @@ impl WorkflowsController {
         tag = "Workflows",
         security = "bearerAuth"
     )]
-    #[resp(200, "Rendered slug entity")]
+    #[body(json = PublishRenderSlugDto)]
+    #[resp(200, "Rendered slug entity", json = RenderedSlugEntity)]
     async fn publish_render(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -116,7 +119,8 @@ impl WorkflowsController {
         tag = "Workflows",
         security = "bearerAuth"
     )]
-    #[resp(200, "Workflow run summary")]
+    #[body(json = TriggerWorkflowDto)]
+    #[resp(200, "Workflow run summary", json = WorkflowRunEntity)]
     async fn trigger(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -144,7 +148,7 @@ impl WorkflowsController {
         tag = "Workflows",
         security = "bearerAuth"
     )]
-    #[resp(200, "Workflow run state")]
+    #[resp(200, "Workflow run state", json = WorkflowRunEntity)]
     async fn get_run(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

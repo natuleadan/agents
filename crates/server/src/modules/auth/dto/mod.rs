@@ -62,7 +62,7 @@ impl fmt::Debug for RefreshDto {
 }
 
 /// Request to create a revocable SHA-256-hashed API key.
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateApiKeyDto {
     #[garde(length(min = 2, max = 80))]
@@ -74,7 +74,7 @@ pub struct CreateApiKeyDto {
 }
 
 /// One-time response exposing the newly generated plaintext API key alongside its metadata.
-#[derive(Clone, Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreatedApiKeyResponse {
     pub metadata: ApiKeyMetadata,

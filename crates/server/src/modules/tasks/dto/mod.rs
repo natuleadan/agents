@@ -8,7 +8,7 @@ use ironic::OpenApiSchema;
 use serde::Deserialize;
 
 /// Request payload to enqueue a task in a session.
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct SubmitTaskDto {
     #[garde(length(min = 1, max = 32_768))]
@@ -34,7 +34,7 @@ pub struct LeaseTaskDto {
 }
 
 /// Fenced intermediate state transition (`Running` or `Blocked`).
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateTaskStateDto {
     #[garde(skip)]
@@ -46,7 +46,7 @@ pub struct UpdateTaskStateDto {
 }
 
 /// Fenced task completion payload from the leased Boxer worker.
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteTaskDto {
     #[garde(skip)]
@@ -76,7 +76,7 @@ pub struct FollowUpDto {
 }
 
 /// Query parameters for cursor-paginated task listings.
-#[derive(Debug, Clone, Default, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListTasksQuery {
     #[garde(length(max = 128))]
