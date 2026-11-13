@@ -1,26 +1,30 @@
 # natuleadan-agents
 
-Distributed agent harness with modular Boxer sandbox execution, autocron workflows, and Ironic API orchestrator.
+Distributed, self-sustaining Rust agent harness combining an Ironic API orchestrator,
+NATS JetStream swarm messaging, Valkey ephemeral state, PostgreSQL persistence,
+modular Boxer sandbox execution, Traefik ephemeral previews, and multi-platform NSH clients.
 
 ## Crates
 
-- **`agents-protocol`**: Shared protocol definitions and event streaming types.
-- **`agents-server`**: Central orchestrator with Ironic API, PostgreSQL, Valkey, NATS, and autocron engine.
-- **`agents-boxer`**: Sandbox container supervisor and execution worker.
-- **`agents-installer`**: VPS provisioning and environment self-configuration CLI.
-- **`agents-client`**: Client interface for interacting with the orchestrator.
+- **`agents-protocol`**: Shared protocol contracts, named codecs, JSON-RPC, and event streaming DTOs.
+- **`agents-server`**: Central orchestrator daemon with Ironic NestJS-like modules, PostgreSQL, Valkey, NATS, MCP host, and autocron engine.
+- **`agents-boxer`**: Sandbox daemon supervising `Runtime x Isolation` backends (`host`, `docker`, `openshell`), Traefik preview routes, and the native 2-level agent loop.
+- **`agents-installer`**: VPS provisioning CLI coordinating external `.sh` hardening and cluster setup scripts.
+- **`agents-client`**: Shared `client-core`, `client-tui`, and multi-platform `nsh` GUI (`web`, `ios`, `android`, `macos`, `windows`, `linux`) with `Server` and `Third-Party` modes.
 
 ## Development
 
 ```bash
-# Install commit linting & hooks
+# Install commitlint, Husky hooks, and workspace tooling
 pnpm install
 
-# Check Rust workspace
-cargo check --workspace
-cargo test --workspace
+# Run full repository, formatting, clippy, test, and release-plan checks
+pnpm validate
 ```
 
-## Contributing & Releases
+## Documentation & Governance
 
-See [CONTRIBUTING.md](CONTRIBUTING.md) for commit rules and release workflows.
+- [AGENTS.md](AGENTS.md) — technical architecture rules, branch model, and validation gates.
+- [CONTRIBUTING.md](CONTRIBUTING.md) — commit policy and semantic release workflow.
+- [SECURITY.md](SECURITY.md) — vulnerability disclosure and security scope.
+- [NOTICE](NOTICE) — Apache-2.0 attribution notice.

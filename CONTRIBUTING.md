@@ -24,8 +24,9 @@ The project consists of an isolated Cargo workspace with modular crates:
 
 ## Branches
 
-`main` is the only permanent branch. Create a short branch per work item, open
-a pull request and delete the branch after merge.
+`main` is the protected release branch and `dev` is the protected integration branch.
+Create a short branch (`feat/...`, `fix/...`, `docs/...`) per work item, open a pull
+request toward `dev` (or consolidated `dev` to `main`), and delete the branch after merge.
 
 ## Commit conventions
 

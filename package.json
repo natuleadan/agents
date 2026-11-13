@@ -14,6 +14,8 @@
   },
   "scripts": {
     "prepare": "husky",
+    "validate:repo": "node tools/validate-repo.ts",
+    "validate": "node tools/validate-repo.ts && cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && node tools/release-plan.ts --check",
     "release:plan": "node tools/release-plan.ts",
     "release:prepare": "node tools/release-plan.ts --apply",
     "release:check": "node tools/release-plan.ts --check"
