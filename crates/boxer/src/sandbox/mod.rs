@@ -1,21 +1,27 @@
 //! Two-axis `Runtime x Isolation` sandbox drivers, policy checks, and drivers.
 
+pub mod deepinfra;
 pub mod docker;
 pub mod host;
 pub mod policy;
 pub mod remote;
+pub mod upstash_box;
 
 use std::{future::Future, path::PathBuf, pin::Pin, sync::Arc};
 
-use agents_protocol::{ExecOptions, RuntimeKind, SandboxProfile, TaskStreamEvent};
+use agents_protocol::{
+    ExecOptions, RuntimeKind, SandboxProfile, TaskStreamEvent, ThirdPartyProvider,
+};
 use tokio::sync::{mpsc, watch};
 
 use crate::{config::BoxerConfig, error::BoxerError};
 
+pub use deepinfra::DeepInfraSandboxRuntimeDriver;
 pub use docker::{DockerCommandSpec, DockerRuntimeDriver};
 pub use host::HostRuntimeDriver;
 pub use policy::{build_sanitized_env, resolve_confined_workdir, validate_runtime_isolation};
 pub use remote::{RemoteExecDescriptor, RemoteVpsRuntimeDriver};
+pub use upstash_box::UpstashBoxRuntimeDriver;
 
 pub type BoxFuture<'a, T> = Pin<Box<dyn Future<Output = T> + Send + 'a>>;
 
@@ -73,25 +79,20 @@ pub fn build_sandbox_driver(
         RuntimeKind::RemoteVps => Ok(Arc::new(RemoteVpsRuntimeDriver::new(
             config.workspace_root.clone(),
         ))),
-        RuntimeKind::ThirdParty(provider) => Err(BoxerError::SandboxProfile(
-            agents_protocol::SandboxProfileError::ModeRuntimeMismatch,
-        )
-        .into_context(format!(
-            "third-party provider `{}` runs via client third-party mode, not Boxer daemon",
-            provider.as_str()
-        ))),
+        RuntimeKind::ThirdParty(provider) => match provider {
+            ThirdPartyProvider::UpstashBox => Ok(Arc::new(UpstashBoxRuntimeDriver::new(
+                config.upstash_box_token.clone(),
+            ))),
+            ThirdPartyProvider::DeepInfra => Ok(Arc::new(DeepInfraSandboxRuntimeDriver::new(
+                config.deepinfra_token.clone(),
+            ))),
+            _ => Err(BoxerError::IsolationViolation(format!(
+                "third-party provider `{}` is not yet supported on Boxer",
+                provider.as_str()
+            ))),
+        },
         RuntimeKind::Unknown(_) => Err(BoxerError::IsolationViolation(
             "unknown runtime cannot be provisioned".into(),
         )),
-    }
-}
-
-trait BoxerErrorContext {
-    fn into_context(self, detail: String) -> Self;
-}
-
-impl BoxerErrorContext for BoxerError {
-    fn into_context(self, detail: String) -> Self {
-        BoxerError::IsolationViolation(detail)
     }
 }

@@ -1,5 +1,6 @@
 //! Infrastructure adapters for configuration, persistence, state, messaging, and admission control.
 
+pub mod adapters;
 pub mod admission;
 pub mod bus;
 pub mod config;
@@ -9,9 +10,15 @@ pub mod state;
 pub mod stream;
 pub mod webui;
 
+pub use adapters::{
+    BlobStoreClient, BlobStorePort, InfrastructureRegistry, LocalFsBlobStore, QstashMessageBus,
+    UpstashBlobStore, UpstashVectorAdapter, VectorMatch, VectorStoreClient, VectorStorePort,
+};
 pub use admission::{AdmissionController, AdmissionPermit};
 pub use bus::{InMemoryMessageBus, MessageBus, NatsMessageBus};
-pub use config::{ConfigError, EnvironmentMode, ServerConfig, generate_ephemeral_secret};
+pub use config::{
+    ConfigError, EnvironmentMode, InfrastructureMode, ServerConfig, generate_ephemeral_secret,
+};
 pub use db::{BusHealthIndicator, Database, PostgresHealthIndicator, StateHealthIndicator};
 pub use error::{ServerError, validate_dto};
 pub use state::{

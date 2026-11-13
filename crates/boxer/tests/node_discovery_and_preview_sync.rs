@@ -43,6 +43,8 @@ fn test_config() -> Result<BoxerConfig, Box<dyn std::error::Error>> {
             .join(format!("agents-traefik-node-test-{}", uuid::Uuid::new_v4())),
         traefik_default_ttl_secs: 600,
         strict_native_isolation: true,
+        upstash_box_token: None,
+        deepinfra_token: None,
     })
 }
 
