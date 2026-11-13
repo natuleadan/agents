@@ -4,6 +4,7 @@ version = "0.0.0"
 edition = "2024"
 description = "Sandbox container runner and resource supervisor for distributed agents"
 license = "Apache-2.0"
+publish = false
 
 [dependencies]
 agents-protocol = { path = "../protocol" }

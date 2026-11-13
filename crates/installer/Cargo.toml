@@ -4,6 +4,7 @@ version = "0.0.0"
 edition = "2024"
 description = "VPS provisioning and environment self-configuration CLI for the agents platform"
 license = "Apache-2.0"
+publish = false
 
 [dependencies]
 agents-protocol = { path = "../protocol" }

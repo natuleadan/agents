@@ -33,6 +33,10 @@ const FORBIDDEN_PATTERNS: Array<{ name: string; regex: RegExp }> = [
   { name: "Linux workspace user path", regex: /\/home\/antigravity\// },
   { name: "Co-authored-by trailer", regex: /Co-authored-by:/i },
   { name: "PEM private key header", regex: /-----BEGIN (?:OPENSSH |RSA |EC )?PRIVATE KEY-----/ },
+  {
+    name: "third-party inspiration or internal provider reference",
+    regex: /\b(?:opencode|n8n|jcode|pi-mono|sdk-ops|herdr|codex-rs|claude-code|cubepath)\b/i,
+  },
 ];
 
 let failures = 0;
@@ -61,6 +65,13 @@ function walk(dir: string) {
     const rel = relative(ROOT, full);
     const ext = extname(entry.name);
 
+    if (rel.startsWith("crates/") && entry.name === "Cargo.toml") {
+      const manifest = readFileSync(full, "utf8");
+      if (!/^publish\s*=\s*false\b/m.test(manifest)) {
+        fail(`${rel} must set publish = false to prevent accidental crates.io publishing`);
+      }
+    }
+
     if (SOURCE_EXTENSIONS.has(ext) && (rel.startsWith("crates/") || rel.startsWith("tools/") || rel.startsWith("deploy/"))) {
       const content = readFileSync(full, "utf8");
       const lines = content.split("\n").length;
@@ -69,7 +80,12 @@ function walk(dir: string) {
       }
     }
 
-    if (rel !== "tools/validate-repo.ts" && statSync(full).size < 1_000_000) {
+    if (
+      rel !== "tools/validate-repo.ts" &&
+      rel !== "pnpm-lock.yaml" &&
+      rel !== "Cargo.lock" &&
+      statSync(full).size < 1_000_000
+    ) {
       const text = readFileSync(full, "utf8");
       for (const pattern of FORBIDDEN_PATTERNS) {
         if (pattern.regex.test(text)) {

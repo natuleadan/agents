@@ -4,6 +4,7 @@ version = "0.0.0"
 edition = "2024"
 description = "Orchestrator server exposing the API, coordinating workflows, database, Valkey, NATS and autocron"
 license = "Apache-2.0"
+publish = false
 
 [dependencies]
 agents-protocol = { path = "../protocol" }

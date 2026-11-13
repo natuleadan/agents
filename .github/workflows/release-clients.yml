@@ -1,6 +1,6 @@
 name: Release Multi-Platform Clients
 
-# Multi-platform client and daemon build pipeline inspired by anomalyco/opencode.
+# Multi-platform client and daemon build pipeline.
 # Builds native platform targets on demand or when release tags are pushed.
 on:
   push:
