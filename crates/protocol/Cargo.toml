@@ -4,6 +4,7 @@ version = "0.0.0"
 edition = "2024"
 description = "Common protocol types, DTOs and messaging contracts for the agents harness"
 license = "Apache-2.0"
+publish = false
 
 [dependencies]
 serde = { version = "1.0", features = ["derive"] }
