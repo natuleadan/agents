@@ -19,7 +19,7 @@ Traefik ephemeral app previews, and multi-platform NSH clients.
 | `crates/installer` | VPS provisioning CLI orchestrating external `.sh` hardening scripts |
 | `crates/client` | `client-core`, `client-tui`, and multi-platform `nsh` GUI (`Server` & `Third-Party` modes) |
 | `deploy/scripts/` | Reusable POSIX/Bash VPS hardening and service bootstrap scripts (never hardcoded inside Rust) |
-| `tools/` | Workspace validation (`validate-repo.ts`) and release planning (`release-plan.ts`) |
+| `tools/` | Release planning (`release-plan.ts`) |
 | `.github/` | CODEOWNERS, Dependabot, CI validation, and multi-platform release workflows |
 
 ## Development
@@ -36,13 +36,14 @@ pnpm validate
 
 `pnpm validate` is the single gate before pushing and enforces:
 
-- Every Rust (`.rs`), TypeScript (`.ts`), and shell (`.sh`) source file stays at or below 500 lines.
-- No hardcoded machine-specific home paths, secrets, or `Co-authored-by` trailers in tracked files.
-- Required governance files (`SECURITY.md`, `NOTICE`, `.github/CODEOWNERS`, `AGENTS.md`, `.env.example`) exist.
 - `cargo fmt --all -- --check` passes cleanly.
 - `cargo clippy --workspace --all-targets -- -D warnings` passes with zero warnings.
 - `cargo test --workspace` passes completely.
 - `node tools/release-plan.ts --check` matches `package.json` and `CHANGELOG.md`.
+
+Repository hygiene rules (each `.rs`, `.ts`, and `.sh` file `<= 500` lines,
+`publish = false` on all workspace crates, no hardcoded paths or secrets) also
+remain mandatory across every module.
 
 ## Architecture & Module Rules
 
