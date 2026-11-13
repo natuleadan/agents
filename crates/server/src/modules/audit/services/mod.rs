@@ -141,7 +141,8 @@ impl AuditService {
 }
 
 #[allow(clippy::too_many_arguments)]
-fn compute_entry_hash(
+#[must_use]
+pub fn compute_entry_hash(
     prev_hash: &str,
     id: &str,
     actor_id: Option<&str>,
