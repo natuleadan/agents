@@ -10,7 +10,7 @@ use ironic::prelude::*;
 pub use ingress::{SlugRenderController, WebhookIngressController};
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -43,6 +43,10 @@ impl WorkflowsController {
     )]
     #[body(json = CreateWorkflowDto)]
     #[resp(200, "Created workflow", json = WorkflowEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn create(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -61,6 +65,9 @@ impl WorkflowsController {
         security = "bearerAuth"
     )]
     #[resp(200, "Workflow list", json = Vec<WorkflowEntity>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -78,6 +85,10 @@ impl WorkflowsController {
     )]
     #[body(json = ApproveWorkflowDto)]
     #[resp(200, "Approved workflow", json = WorkflowEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Workflow not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn approve(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -98,6 +109,11 @@ impl WorkflowsController {
     )]
     #[body(json = PublishRenderSlugDto)]
     #[resp(200, "Rendered slug entity", json = RenderedSlugEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Workflow not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn publish_render(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -121,6 +137,11 @@ impl WorkflowsController {
     )]
     #[body(json = TriggerWorkflowDto)]
     #[resp(200, "Workflow run summary", json = WorkflowRunEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Workflow not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn trigger(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -149,6 +170,10 @@ impl WorkflowsController {
         security = "bearerAuth"
     )]
     #[resp(200, "Workflow run state", json = WorkflowRunEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Workflow run not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn get_run(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

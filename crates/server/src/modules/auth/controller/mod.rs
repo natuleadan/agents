@@ -6,7 +6,7 @@ use agents_protocol::{ApiKeyMetadata, ApiKeyScope, TokenPair};
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::auth::{
         dto::{
             CreateApiKeyDto, CreatedApiKeyResponse, LoginDto, RefreshDto, RegisterDto,
@@ -30,8 +30,9 @@ impl AuthController {
     #[api(summary = "Register a user account", tag = "Auth")]
     #[body(json = RegisterDto)]
     #[resp(200, "Registered actor", json = AuthenticatedActor)]
-    #[resp(409, "Duplicate email")]
-    #[resp(422, "Validation error")]
+    #[resp(409, "Duplicate email", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn register(
         &self,
         #[body] dto: RegisterDto,
@@ -45,7 +46,9 @@ impl AuthController {
     #[api(summary = "Authenticate with email and password", tag = "Auth")]
     #[body(json = LoginDto)]
     #[resp(200, "Access and refresh token pair", json = TokenPair)]
-    #[resp(401, "Invalid credentials")]
+    #[resp(401, "Invalid credentials", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn login(&self, #[body] dto: LoginDto) -> Result<Json<TokenPair>, HttpError> {
         validate_dto(&dto)?;
         let pair = self.service.login(&dto).await?;
@@ -56,7 +59,9 @@ impl AuthController {
     #[api(summary = "Rotate an opaque refresh token", tag = "Auth")]
     #[body(json = RefreshDto)]
     #[resp(200, "Fresh access and refresh token pair", json = TokenPair)]
-    #[resp(401, "Invalid or revoked refresh token")]
+    #[resp(401, "Invalid or revoked refresh token", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn refresh(&self, #[body] dto: RefreshDto) -> Result<Json<TokenPair>, HttpError> {
         validate_dto(&dto)?;
         let pair = self.service.refresh(&dto).await?;
@@ -67,6 +72,9 @@ impl AuthController {
     #[api(summary = "Revoke an opaque refresh token", tag = "Auth")]
     #[body(json = RefreshDto)]
     #[resp(204, "Refresh token revoked")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn logout(&self, #[body] dto: RefreshDto) -> Result<(), HttpError> {
         validate_dto(&dto)?;
         self.service.logout(&dto).await?;
@@ -81,6 +89,9 @@ impl AuthController {
         security = "bearerAuth"
     )]
     #[resp(200, "Current actor", json = AuthenticatedActor)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(404, "User not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn me(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -97,6 +108,10 @@ impl AuthController {
     )]
     #[body(json = CreateApiKeyDto)]
     #[resp(200, "Created API key", json = CreatedApiKeyResponse)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn create_api_key(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -116,6 +131,9 @@ impl AuthController {
         security = "bearerAuth"
     )]
     #[resp(200, "API key metadata list", json = Vec<ApiKeyMetadata>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list_api_keys(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -133,6 +151,10 @@ impl AuthController {
         security = "bearerAuth"
     )]
     #[resp(200, "Revocation summary", json = RevokeApiKeyResponse)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "API key not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn revoke_api_key(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

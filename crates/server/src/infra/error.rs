@@ -81,3 +81,35 @@ where
     dto.validate()
         .map_err(|report| HttpError::unprocessable_entity("VALIDATION_FAILED", report.to_string()))
 }
+
+/// Standard structured error response payload rendered across all OpenAPI 4xx/5xx operations.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct ErrorResponse {
+    /// Machine-readable error code string.
+    pub error: String,
+    /// Detailed human-readable description or field-level validation report.
+    pub message: String,
+}
+
+impl ironic::OpenApiSchema for ErrorResponse {
+    fn openapi_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "ErrorResponse",
+            "description": "Standard structured error envelope",
+            "properties": {
+                "error": {
+                    "type": "string",
+                    "description": "Machine-readable error code string",
+                    "example": "VALIDATION_FAILED"
+                },
+                "message": {
+                    "type": "string",
+                    "description": "Human-readable explanation of the error or validation breakdown",
+                    "example": "Validation failed: field 'email' is invalid"
+                }
+            },
+            "required": ["error", "message"]
+        })
+    }
+}

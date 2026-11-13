@@ -6,7 +6,7 @@ use agents_protocol::{ApiKeyScope, CursorPage};
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -37,6 +37,10 @@ impl SessionsController {
     )]
     #[body(json = CreateSessionDto)]
     #[resp(200, "Created session", json = SessionEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn create(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -55,6 +59,10 @@ impl SessionsController {
         security = "bearerAuth"
     )]
     #[resp(200, "Cursor-paginated sessions", json = CursorPage<SessionEntity>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -73,7 +81,10 @@ impl SessionsController {
         security = "bearerAuth"
     )]
     #[resp(200, "Session record", json = SessionEntity)]
-    #[resp(403, "BOLA ownership violation")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "BOLA ownership violation", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn get(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -92,7 +103,12 @@ impl SessionsController {
     )]
     #[body(json = UpdateSessionDto)]
     #[resp(200, "Updated session", json = SessionEntity)]
-    #[resp(409, "Optimistic concurrency conflict")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(409, "Optimistic concurrency conflict", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn update(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -113,6 +129,11 @@ impl SessionsController {
     )]
     #[body(json = SaveDraftDto)]
     #[resp(200, "Saved draft snapshot", json = DraftSnapshot)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn save_draft(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -132,6 +153,10 @@ impl SessionsController {
         security = "bearerAuth"
     )]
     #[resp(200, "Recovered draft snapshot", json = DraftSnapshot)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Draft not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn load_draft(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -149,6 +174,10 @@ impl SessionsController {
         security = "bearerAuth"
     )]
     #[resp(204, "Session deleted")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn delete(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

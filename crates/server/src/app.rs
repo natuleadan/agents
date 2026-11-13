@@ -296,7 +296,18 @@ pub async fn build_application(
 
     let openapi_config = crate::openapi::configure_openapi();
 
-    let cors = CorsConfig::new().allowed_origins(infra.config.trusted_origins.clone());
+    let cors = CorsConfig::new()
+        .allowed_origins(infra.config.trusted_origins.clone())
+        .allowed_headers(vec![
+            "Authorization",
+            "Content-Type",
+            "Accept",
+            "Origin",
+            "X-Requested-With",
+            "X-API-Key",
+        ])
+        .allow_credentials(true)
+        .max_age(86400);
     let global_ip_rate_max = infra.config.rate_limit_max_requests.saturating_mul(10);
     let rate_win = infra.config.rate_limit_window_secs;
 

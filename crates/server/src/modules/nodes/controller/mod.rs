@@ -13,7 +13,7 @@ use axum::{
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -49,6 +49,9 @@ impl NodesController {
         security = "bearerAuth"
     )]
     #[resp(200, "Active worker nodes", json = NodeListResponse)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -65,6 +68,10 @@ impl NodesController {
     )]
     #[body(json = NodeHeartbeatDto)]
     #[resp(200, "Registered node snapshot", json = BoxerNodeAnnouncement)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn heartbeat(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -84,6 +91,10 @@ impl NodesController {
     )]
     #[body(json = PreviewSyncDto)]
     #[resp(200, "Preview sync acknowledgment", json = PreviewSyncAck)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn sync_preview(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

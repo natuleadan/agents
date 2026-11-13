@@ -6,7 +6,7 @@ use agents_protocol::ApiKeyScope;
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -37,6 +37,10 @@ impl AutocronController {
     )]
     #[body(json = CreateScheduleDto)]
     #[resp(200, "Created Autocron schedule", json = AutocronScheduleEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn create_schedule(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -55,6 +59,9 @@ impl AutocronController {
         security = "bearerAuth"
     )]
     #[resp(200, "Owned Autocron schedules", json = Vec<AutocronScheduleEntity>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list_schedules(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -72,7 +79,12 @@ impl AutocronController {
     )]
     #[body(json = ExecuteScheduleDto)]
     #[resp(200, "Triggered workflow run outcome", json = AutocronTickOutcome)]
-    #[resp(409, "Budget cap exhausted or schedule disabled")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Schedule not found", json = ErrorResponse)]
+    #[resp(409, "Budget cap exhausted or schedule disabled", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn run_schedule(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -96,6 +108,11 @@ impl AutocronController {
     )]
     #[body(json = ToggleScheduleDto)]
     #[resp(200, "Updated Autocron schedule", json = AutocronScheduleEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Schedule not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn toggle_schedule(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -119,6 +136,11 @@ impl AutocronController {
     )]
     #[body(json = TriggerWebhookDto)]
     #[resp(200, "Webhook run dispatched", json = AutocronTickOutcome)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Schedule not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn trigger_webhook(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

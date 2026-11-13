@@ -80,3 +80,25 @@ impl OpenApiSchema for PutBlackboardDto {
         })
     }
 }
+
+/// Response payload representing a stored or retrieved shared blackboard key-value entry.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct BlackboardEntryResponse {
+    pub key: String,
+    pub value: Value,
+}
+
+impl OpenApiSchema for BlackboardEntryResponse {
+    fn openapi_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "BlackboardEntryResponse",
+            "required": ["key", "value"],
+            "properties": {
+                "key": { "type": "string", "example": "shared_progress" },
+                "value": { "type": "object", "example": { "completedSteps": 3 } }
+            }
+        })
+    }
+}
