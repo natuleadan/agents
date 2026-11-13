@@ -1,0 +1,115 @@
+name: Release Multi-Platform Clients
+
+# Multi-platform client and daemon build pipeline inspired by anomalyco/opencode.
+# Builds native platform targets on demand or when release tags are pushed.
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Build all target matrices without publishing release assets"
+        required: false
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-clients-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  build-core-binaries:
+    name: Build Daemon & CLI (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
+          - target: x86_64-apple-darwin
+            os: macos-15-intel
+          - target: aarch64-apple-darwin
+            os: macos-15
+          - target: x86_64-pc-windows-msvc
+            os: windows-2025
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build workspace binaries
+        run: cargo build --release --workspace --target ${{ matrix.target }}
+
+      - name: Package artifacts
+        shell: bash
+        run: |
+          mkdir -p dist
+          ext=""
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then ext=".exe"; fi
+          for bin in agents-server agents-boxer agents-installer agents-client; do
+            if [ -f "target/${{ matrix.target }}/release/${bin}${ext}" ]; then
+              cp "target/${{ matrix.target }}/release/${bin}${ext}" dist/
+            fi
+          done
+          (cd dist && sha256sum * > SHA256SUMS)
+
+      - name: Upload target artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: agents-${{ matrix.target }}
+          path: dist/
+
+  client-platform-matrix:
+    name: Client Target (${{ matrix.platform }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: web-wasm
+            os: ubuntu-24.04
+            rust_target: wasm32-unknown-unknown
+          - platform: linux-desktop
+            os: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+          - platform: macos-desktop
+            os: macos-15
+            rust_target: aarch64-apple-darwin
+          - platform: windows-desktop
+            os: windows-2025
+            rust_target: x86_64-pc-windows-msvc
+          - platform: android-mobile
+            os: ubuntu-24.04
+            rust_target: aarch64-linux-android
+          - platform: ios-mobile
+            os: macos-15
+            rust_target: aarch64-apple-ios
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.rust_target }}
+
+      - name: Verify client target check
+        run: cargo check -p agents-client --target ${{ matrix.rust_target }}

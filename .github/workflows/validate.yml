@@ -2,9 +2,9 @@ name: Validate Agents
 
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
   workflow_dispatch:
 
 permissions:
@@ -53,7 +53,6 @@ jobs:
           done
 
   validate:
-    name: Validate Workspace & Rust
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
@@ -68,9 +67,6 @@ jobs:
           cache: "pnpm"
       - name: Install Node dependencies
         run: pnpm install --frozen-lockfile
-
-      - name: Check release version
-        run: node tools/release-plan.ts --check
 
       - name: Set up Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -90,14 +86,11 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
-      - name: Check formatting
-        run: cargo fmt --all -- --check
+      - name: Verify Rust 1.100+ supply-chain policy
+        run: cargo --config 'resolver.min-publish-age="7 days"' check --workspace
 
-      - name: Run clippy
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Run tests
-        run: cargo test --workspace
+      - name: Validate workspace, formatting, clippy, tests and release plan
+        run: pnpm validate
 
   tag:
     name: Tag & Release
@@ -111,6 +104,8 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
+
+      - uses: dtolnay/rust-toolchain@stable
 
       - name: Configure git
         run: |
@@ -139,6 +134,7 @@ jobs:
           cargo build --release --workspace
           mkdir -p dist
           tar -czf dist/agents_x86_64-unknown-linux-gnu.tar.gz -C target/release agents-server agents-boxer agents-installer agents-client
+          (cd dist && sha256sum *.tar.gz > SHA256SUMS)
 
       - name: Tag and push
         if: steps.version.outputs.skip != 'true'
@@ -152,4 +148,4 @@ jobs:
         with:
           tag_name: v${{ steps.version.outputs.version }}
           generate_release_notes: true
-          files: dist/*.tar.gz
+          files: dist/*
