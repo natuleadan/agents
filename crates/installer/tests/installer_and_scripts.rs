@@ -254,6 +254,9 @@ async fn real_preflight_dry_run_scripts_and_doctor_smoke_execute_cleanly() {
     let secrets = GeneratedSecrets::generate();
     write_env_file_secure(&env_path, &render_env_file(&spec, &secrets)).unwrap();
 
+    let os_release_path = dir.join("os-release");
+    std::fs::write(&os_release_path, "ID=debian\nVERSION_ID=12\n").unwrap();
+
     let executor = SystemExecutor;
     let plan = ExecutionPlan::build_install(&spec).unwrap();
     for step in &plan.steps {
@@ -264,6 +267,7 @@ async fn real_preflight_dry_run_scripts_and_doctor_smoke_execute_cleanly() {
         let out = tokio::process::Command::new("bash")
             .arg(&adjusted.script_path)
             .args(&adjusted.args)
+            .env("OS_RELEASE_FILE", &os_release_path)
             .env("AGENTS_MIN_DISK_MB", "1")
             .env("AGENTS_MIN_RAM_MB", "64")
             .output()

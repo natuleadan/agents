@@ -30,6 +30,7 @@ jsonwebtoken (cargo)                   9.3.1    MIT                https://githu
 ratatui (cargo)                        0.30.2   MIT                https://github.com/ratatui/ratatui
 redis (cargo)                          1.8.1    BSD-3-Clause       https://github.com/redis-rs/redis-rs
 reqwest (cargo)                        0.13.5   MIT OR Apache-2.0  https://github.com/seanmonstar/reqwest
+scalar_api_reference (cargo)           0.2.24   MIT                https://github.com/scalar/scalar
 semver (cargo)                         1.0.28   MIT OR Apache-2.0  https://github.com/dtolnay/semver
 serde (cargo)                          1.0.229  MIT OR Apache-2.0  https://github.com/serde-rs/serde
 serde_json (cargo)                     1.0.154  MIT OR Apache-2.0  https://github.com/serde-rs/json
@@ -39,7 +40,6 @@ subtle (cargo)                         2.6.1    BSD-3-Clause       https://githu
 thiserror (cargo)                      2.0.21   MIT OR Apache-2.0  https://github.com/dtolnay/thiserror
 tokio (cargo)                          1.54.1   MIT                https://github.com/tokio-rs/tokio
 tokio-tungstenite (cargo)              0.29.0   MIT                https://github.com/snapview/tokio-tungstenite
-tokio-tungstenite (cargo)              0.30.0   MIT                https://github.com/snapview/tokio-tungstenite
 tower (cargo)                          0.5.3    MIT                https://github.com/tower-rs/tower
 tracing (cargo)                        0.1.44   MIT                https://github.com/tokio-rs/tracing
 tracing-subscriber (cargo)             0.3.23   MIT                https://github.com/tokio-rs/tracing
@@ -49,7 +49,7 @@ License texts
 
 ==================================================
   The MIT License (MIT)
-  Applies to: @commitlint/cli (npm), @commitlint/config-conventional (npm)
+  Applies to: @commitlint/cli (npm), @commitlint/config-conventional (npm), scalar_api_reference (cargo)
 ==================================================
 
 The MIT License (MIT)
@@ -2763,7 +2763,7 @@ SOFTWARE.
 
 ==================================================
   Copyright (c) 2017 Daniel Abramov
-  Applies to: tokio-tungstenite (cargo), tokio-tungstenite (cargo)
+  Applies to: tokio-tungstenite (cargo)
 ==================================================
 
 Copyright (c) 2017 Daniel Abramov

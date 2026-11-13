@@ -322,8 +322,7 @@ pub async fn build_application(
                 .configure_router(move |router| {
                     mount_native_stream_and_mcp_routes(router, gw_cell, mcp_cell, nodes_cell)
                 })
-                .with_openapi(openapi_config)
-                .swagger_ui("/docs"),
+                .with_openapi(openapi_config),
         )
         .build()
         .await
@@ -403,10 +402,28 @@ fn mount_native_stream_and_mcp_routes(
     mcp_cell: Arc<OnceLock<McpHttpState>>,
     nodes_cell: Arc<OnceLock<NodeHttpState>>,
 ) -> Router {
+    let scalar_cfg = serde_json::json!({
+        "url": "/openapi.json",
+        "theme": "purple",
+        "hideModels": false,
+        "showSidebar": true
+    });
+    let scalar_cfg_slash = scalar_cfg.clone();
+
     router
         .merge(crate::infra::webui::webui_router())
         .merge(gateway_lazy_router(gw_cell))
         .merge(traefik_lazy_router(nodes_cell))
+        .merge(scalar_api_reference::axum::router("/docs", &scalar_cfg))
+        .route(
+            "/docs/",
+            axum::routing::get(move || async move {
+                scalar_api_reference::axum::scalar_response(
+                    &scalar_cfg_slash,
+                    Some("/docs/scalar.js"),
+                )
+            }),
+        )
         .route(
             "/mcp",
             axum::routing::post(move |req: AxumRequest<Body>| {

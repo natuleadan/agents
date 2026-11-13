@@ -102,8 +102,9 @@ fn provider_registry_and_swarm_asi05_asi07_and_worktree_drop_guard() -> TestResu
 
     // Worktree isolation + DropGuard
     let root = unique_temp_dir("boxer-worktree")?;
+    let canonical_root = std::fs::canonicalize(&root)?;
     let (wt_path, _guard) = provision_task_worktree(&root, "sess-wt", "task_alpha_1")?;
-    assert!(wt_path.starts_with(&root));
+    assert!(wt_path.starts_with(&canonical_root));
     assert!(provision_task_worktree(&root, "sess-wt", "../etc").is_ok());
     assert!(provision_task_worktree(&root, "sess-wt", "///").is_err());
     let _ = std::fs::remove_dir_all(&root);

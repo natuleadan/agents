@@ -75,7 +75,11 @@ check_cmd() {
 echo "[INFO] Running non-destructive doctor (role=${ROLE}, non_destructive=${NON_DESTRUCTIVE})"
 
 if [[ -f "${ENV_FILE}" ]]; then
-  PERMS="$(stat -c '%a' "${ENV_FILE}")"
+  if stat --version >/dev/null 2>&1; then
+    PERMS="$(stat -c '%a' "${ENV_FILE}")"
+  else
+    PERMS="$(stat -f '%Lp' "${ENV_FILE}")"
+  fi
   if [[ "${PERMS}" == "600" || "${PERMS}" == "640" || "${PERMS}" == "400" ]]; then
     pass "Environment file permissions safe (${PERMS}): ${ENV_FILE}"
   else

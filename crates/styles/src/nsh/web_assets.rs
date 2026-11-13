@@ -18,7 +18,7 @@ pub fn web_manifest_json() -> &'static str {
 #[must_use]
 pub fn index_html() -> &'static str {
     r#"<!doctype html>
-<html lang="en" data-theme="dark">
+<html lang="en">
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -35,7 +35,14 @@ pub fn index_html() -> &'static str {
         <span id="auth-state-badge" data-testid="auth-state-badge" class="badge muted">Signed Out</span>
       </div>
       <div class="header-actions">
-        <button id="theme-toggle-btn" data-testid="theme-toggle-btn" type="button" class="btn outline">Toggle Theme</button>
+        <div class="theme-switcher" role="group" aria-label="Theme preference">
+          <select id="theme-select" data-testid="theme-select" class="select-theme" aria-label="Theme mode">
+            <option value="system">System (Auto)</option>
+            <option value="light">Light</option>
+            <option value="dark">Dark</option>
+          </select>
+          <button id="theme-toggle-btn" data-testid="theme-toggle-btn" type="button" class="btn outline" title="Cycle theme mode">Toggle Theme</button>
+        </div>
         <button id="palette-open-btn" data-testid="palette-open-btn" type="button" class="btn ghost">Commands</button>
       </div>
     </header>
@@ -136,7 +143,9 @@ html, body { margin: 0; padding: 0; background: var(--background); color: var(--
 .hidden { display: none !important; }
 .app-root { display: flex; flex-direction: column; min-height: 100vh; max-width: 1440px; margin: 0 auto; padding: 16px; gap: 16px; }
 .header-bar { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); }
-.brand-group, .header-actions, .row-actions, .mode-tabs { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.brand-group, .header-actions, .row-actions, .mode-tabs, .theme-switcher { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+.select-theme { background: var(--secondary); color: var(--secondary-foreground); border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 10px; font-family: inherit; font-size: 0.84rem; cursor: pointer; }
+.select-theme:focus { outline: 2px solid var(--ring); outline-offset: 1px; }
 .brand-mark { font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }
 .badge { display: inline-flex; align-items: center; padding: 3px 10px; border-radius: 999px; border: 1px solid var(--border); background: var(--secondary); color: var(--secondary-foreground); font-size: 0.78rem; }
 .badge.muted { color: var(--muted-foreground); }
