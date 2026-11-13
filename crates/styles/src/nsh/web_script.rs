@@ -83,9 +83,56 @@ pub fn app_js() -> &'static str {
     }
   }
 
+  const THEME_KEY = "agents_theme";
+  function resolveTheme(pref) {
+    if (pref === "light") return "light";
+    if (pref === "dark") return "dark";
+    return window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  }
+
+  function applyTheme(pref) {
+    const effective = resolveTheme(pref);
+    document.documentElement.dataset.theme = effective;
+    document.documentElement.dataset.themePref = pref;
+    try { localStorage.setItem(THEME_KEY, pref); } catch (_) {}
+    const btn = el("theme-toggle-btn");
+    if (btn) {
+      const icon = pref === "system" ? "🖥️ System" : pref === "dark" ? "🌙 Dark" : "☀️ Light";
+      btn.textContent = icon;
+      btn.title = `Theme: ${pref} (click to cycle)`;
+    }
+    const sel = el("theme-select");
+    if (sel && sel.value !== pref) {
+      sel.value = pref;
+    }
+  }
+
+  const initialPref = (function() {
+    try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; }
+  })();
+  applyTheme(initialPref);
+
+  if (window.matchMedia) {
+    window.matchMedia("(prefers-color-scheme: dark)").addEventListener("change", () => {
+      const cur = (function() {
+        try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; }
+      })();
+      if (cur === "system") applyTheme("system");
+    });
+  }
+
+  if (el("theme-select")) {
+    el("theme-select").addEventListener("change", (ev) => {
+      applyTheme(ev.target.value);
+    });
+  }
+
   el("theme-toggle-btn").addEventListener("click", () => {
-    const root = document.documentElement;
-    root.dataset.theme = root.dataset.theme === "dark" ? "light" : "dark";
+    const cur = (function() {
+      try { return localStorage.getItem(THEME_KEY) || "system"; } catch (_) { return "system"; }
+    })();
+    const next = cur === "system" ? "light" : cur === "light" ? "dark" : "system";
+    applyTheme(next);
   });
 
   el("mode-server-btn").addEventListener("click", () => {

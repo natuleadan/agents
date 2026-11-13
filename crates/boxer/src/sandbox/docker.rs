@@ -72,7 +72,10 @@ impl DockerRuntimeDriver {
         let container_name = format!("agents-box-{sanitized_task_id}");
 
         let mem_mb = req.exec.max_memory_mb.unwrap_or(512).max(64);
-        let cpus = req.exec.max_cpus.unwrap_or(2).max(1);
+        let host_cpus = std::thread::available_parallelism()
+            .map(|n| n.get() as u32)
+            .unwrap_or(1);
+        let cpus = req.exec.max_cpus.unwrap_or(2).min(host_cpus).max(1);
         let mount_arg = format!("type=bind,src={},dst=/workspace", workdir.display());
 
         let mut args = vec![

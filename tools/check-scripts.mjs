@@ -54,10 +54,13 @@ for (const path of paths) {
 
 const sc = spawnSync("shellcheck", ["-S", "warning", ...paths], { stdio: "inherit" })
 if (sc.error) {
-  console.error(`FAIL: unable to invoke shellcheck: ${sc.error.message}`)
-  process.exit(1)
-}
-if (sc.status !== 0) {
+  if (sc.error.code === "ENOENT") {
+    console.warn("SKIP: shellcheck not found in PATH; skipping shellcheck lint on this host.")
+  } else {
+    console.error(`FAIL: unable to invoke shellcheck: ${sc.error.message}`)
+    process.exit(1)
+  }
+} else if (sc.status !== 0) {
   process.exit(sc.status ?? 1)
 }
 
