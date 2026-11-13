@@ -5,6 +5,7 @@ use std::sync::Arc;
 use agents_server::{
     InfrastructureHandles, ServerConfig, build_application,
     infra::{
+        adapters::{BlobStorePort, InMemoryVectorStore, LocalFsBlobStore, VectorStorePort},
         admission::AdmissionController,
         bus::{InMemoryMessageBus, MessageBus},
         state::{InMemoryStateBackend, StateBackend},
@@ -63,11 +64,18 @@ pub async fn build_test_harness_with_config(config: ServerConfig) -> TestHarness
     let workflow_repo = InMemoryWorkflowRepository::new();
     let autocron_repo = InMemoryAutocronRepository::new();
 
+    let vector: Arc<dyn VectorStorePort> = Arc::new(InMemoryVectorStore::new());
+    let blob: Arc<dyn BlobStorePort> = Arc::new(LocalFsBlobStore::new(std::path::PathBuf::from(
+        "/tmp/agents-test-blobs",
+    )));
+
     let infra = InfrastructureHandles {
         config: config.clone(),
         database: None,
         state: Arc::clone(&state) as Arc<dyn StateBackend>,
         bus: Arc::clone(&bus) as Arc<dyn MessageBus>,
+        vector,
+        blob,
         admission: Arc::clone(&admission),
         audit_store: AuditStore(Arc::clone(&audit_repo) as Arc<dyn AuditRepository>),
         auth_store: AuthStore(Arc::clone(&auth_repo) as Arc<dyn AuthRepository>),
