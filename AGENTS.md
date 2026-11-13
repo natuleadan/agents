@@ -20,7 +20,7 @@ Traefik ephemeral app previews, and multi-platform NSH clients.
 | `crates/installer` | VPS provisioning CLI orchestrating external `.sh` hardening scripts |
 | `crates/client` | `client-core`, `client-tui`, and multi-platform `nsh` GUI (`Server` & `Third-Party` modes) |
 | `deploy/scripts/` | Reusable POSIX/Bash VPS hardening and service bootstrap scripts (never hardcoded inside Rust) |
-| `tools/` | Release planning (`release-plan.ts`) and notice generator (`third-party-notices.mjs`) |
+| `tools/` | Release planning (`release-plan.ts`), script validation (`check-scripts.mjs`), and notice generator (`third-party-notices.mjs`) |
 | `.github/` | CODEOWNERS, Dependabot, CI validation, and multi-platform release workflows |
 
 ## Development
@@ -40,6 +40,7 @@ pnpm validate
 - `cargo fmt --all -- --check` passes cleanly.
 - `cargo clippy --workspace --all-targets -- -D warnings` passes with zero warnings.
 - `cargo test --workspace` passes completely.
+- `node tools/check-scripts.mjs` validates all `deploy/scripts/*.sh` (`bash -n`, `shellcheck`, `shfmt`, `<= 500` lines).
 - `node tools/release-plan.ts --check` matches `package.json` and `CHANGELOG.md`.
 - `node tools/third-party-notices.mjs --check` matches `ThirdPartyNotices.txt`.
 

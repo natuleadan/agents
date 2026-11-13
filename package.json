@@ -14,7 +14,8 @@
   },
   "scripts": {
     "prepare": "husky",
-    "validate": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && node tools/release-plan.ts --check && node tools/third-party-notices.mjs --check",
+    "validate": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && node tools/check-scripts.mjs && node tools/release-plan.ts --check && node tools/third-party-notices.mjs --check",
+    "scripts:check": "node tools/check-scripts.mjs",
     "notices": "node tools/third-party-notices.mjs",
     "notices:check": "node tools/third-party-notices.mjs --check",
     "release:plan": "node tools/release-plan.ts",

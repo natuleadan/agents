@@ -86,6 +86,9 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-cargo-
 
+      - name: Install shellcheck and shfmt
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck shfmt
+
       - name: Verify Rust 1.100+ supply-chain policy
         run: cargo --config 'resolver.min-publish-age="7 days"' check --workspace
 
