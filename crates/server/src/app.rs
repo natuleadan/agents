@@ -1,0 +1,362 @@
+//! Application module graph, dependency wiring, OpenAPI metadata, and Axum platform assembly.
+
+use std::{
+    sync::{Arc, OnceLock},
+    time::Duration,
+};
+
+use axum::{
+    Router,
+    body::Body,
+    extract::Request as AxumRequest,
+    http::StatusCode,
+    response::{IntoResponse, Response},
+};
+use ironic::{
+    AxumAdapter, OpenApiAxumApplication, OpenApiAxumExt, OpenApiConfig, ProviderDefinition,
+    SecurityScheme,
+    prelude::*,
+    register_health_indicator,
+    security::{
+        CorsConfig, CorsMiddleware, RateLimitMiddleware, SecurityHeadersConfig,
+        SecurityHeadersMiddleware,
+    },
+};
+use tower::ServiceExt;
+
+use crate::{
+    infra::{
+        admission::AdmissionController,
+        bus::{InMemoryMessageBus, MessageBus, NatsMessageBus},
+        config::ServerConfig,
+        db::{BusHealthIndicator, Database, PostgresHealthIndicator, StateHealthIndicator},
+        error::ServerError,
+        state::{InMemoryStateBackend, StateBackend, ValkeyStateBackend},
+        stream::{
+            AdmissionStore, BusClient, InMemoryStreamRepository, PgStreamRepository, StreamStore,
+        },
+    },
+    modules::{
+        audit::{
+            AuditModule,
+            repositories::{AuditStore, InMemoryAuditRepository, PgAuditRepository},
+        },
+        auth::{
+            AuthModule,
+            repositories::{AuthStore, InMemoryAuthRepository, PgAuthRepository},
+            services::{AuthService, StateStore},
+        },
+        gateway::{
+            GatewayModule,
+            controller::{GatewayHttpState, gateway_lazy_router},
+            services::GatewayService,
+        },
+        mcp::{
+            McpModule,
+            controller::{McpHttpState, protected_mcp_router},
+            services::McpHostService,
+        },
+        sessions::{
+            SessionsModule,
+            repositories::{InMemorySessionRepository, PgSessionRepository, SessionStore},
+        },
+        tasks::{
+            TasksModule,
+            repositories::{InMemoryTaskRepository, PgTaskRepository, TaskStore},
+        },
+    },
+};
+
+/// Global infrastructure module registering default repository/bus/state wrappers.
+pub struct InfraModule;
+
+impl Module for InfraModule {
+    fn definition() -> ModuleDefinition {
+        ModuleDefinition::builder::<Self>()
+            .provider(ProviderDefinition::value(ServerConfig::for_tests()))
+            .provider(ProviderDefinition::value(StateStore::default()))
+            .provider(ProviderDefinition::value(BusClient::default()))
+            .provider(ProviderDefinition::value(AdmissionStore::default()))
+            .provider(ProviderDefinition::value(AuditStore::default()))
+            .provider(ProviderDefinition::value(AuthStore::default()))
+            .provider(ProviderDefinition::value(SessionStore::default()))
+            .provider(ProviderDefinition::value(TaskStore::default()))
+            .provider(ProviderDefinition::value(StreamStore::default()))
+            .export::<ServerConfig>()
+            .export::<StateStore>()
+            .export::<BusClient>()
+            .export::<AdmissionStore>()
+            .export::<AuditStore>()
+            .export::<AuthStore>()
+            .export::<SessionStore>()
+            .export::<TaskStore>()
+            .export::<StreamStore>()
+            .build()
+    }
+}
+
+/// Root Ironic application module wiring all domain modules.
+#[derive(Module)]
+#[module(imports = [
+    HealthModule,
+    InfraModule,
+    AuditModule,
+    AuthModule,
+    SessionsModule,
+    TasksModule,
+    GatewayModule,
+    McpModule,
+])]
+pub struct AppModule;
+
+/// Runtime infrastructure handles constructed from [`ServerConfig`].
+pub struct InfrastructureHandles {
+    pub config: ServerConfig,
+    pub database: Option<Database>,
+    pub state: Arc<dyn StateBackend>,
+    pub bus: Arc<dyn MessageBus>,
+    pub admission: Arc<AdmissionController>,
+    pub audit_store: AuditStore,
+    pub auth_store: AuthStore,
+    pub session_store: SessionStore,
+    pub task_store: TaskStore,
+    pub stream_store: StreamStore,
+}
+
+impl InfrastructureHandles {
+    /// Connects configured external infrastructure (PostgreSQL, Valkey, NATS) or falls back
+    /// to hermetic in-memory implementations when URLs are unset in dev/test modes.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServerError`] when a configured datastore fails to connect or migrate.
+    pub async fn from_config(config: ServerConfig) -> Result<Self, ServerError> {
+        let database = match config.database_url.as_deref() {
+            Some(url) => {
+                Some(Database::connect_and_migrate(url, config.database_max_connections).await?)
+            }
+            None => None,
+        };
+
+        let state: Arc<dyn StateBackend> = match config.valkey_url.as_deref() {
+            Some(url) => ValkeyStateBackend::connect(url).await?,
+            None => InMemoryStateBackend::new(),
+        };
+
+        let bus: Arc<dyn MessageBus> = match config.nats_url.as_deref() {
+            Some(url) => NatsMessageBus::connect(url).await?,
+            None => InMemoryMessageBus::new(),
+        };
+
+        let admission =
+            AdmissionController::new(config.max_concurrent_global, config.max_concurrent_session);
+
+        let (audit_store, auth_store, session_store, task_store, stream_store) =
+            match database.as_ref() {
+                Some(db) => {
+                    let pool = db.pool().clone();
+                    (
+                        AuditStore(PgAuditRepository::new(pool.clone())),
+                        AuthStore(PgAuthRepository::new(pool.clone())),
+                        SessionStore(PgSessionRepository::new(pool.clone())),
+                        TaskStore(PgTaskRepository::new(pool.clone())),
+                        StreamStore(PgStreamRepository::new(pool)),
+                    )
+                }
+                None => (
+                    AuditStore(InMemoryAuditRepository::new()),
+                    AuthStore(InMemoryAuthRepository::new()),
+                    SessionStore(InMemorySessionRepository::new()),
+                    TaskStore(InMemoryTaskRepository::new()),
+                    StreamStore(InMemoryStreamRepository::new()),
+                ),
+            };
+
+        Ok(Self {
+            config,
+            database,
+            state,
+            bus,
+            admission,
+            audit_store,
+            auth_store,
+            session_store,
+            task_store,
+            stream_store,
+        })
+    }
+
+    /// Creates isolated in-memory infrastructure handles for integration tests.
+    #[must_use]
+    pub fn in_memory(config: ServerConfig) -> Self {
+        let state = InMemoryStateBackend::new();
+        let bus = InMemoryMessageBus::new();
+        let admission =
+            AdmissionController::new(config.max_concurrent_global, config.max_concurrent_session);
+        Self {
+            config,
+            database: None,
+            state,
+            bus,
+            admission,
+            audit_store: AuditStore(InMemoryAuditRepository::new()),
+            auth_store: AuthStore(InMemoryAuthRepository::new()),
+            session_store: SessionStore(InMemorySessionRepository::new()),
+            task_store: TaskStore(InMemoryTaskRepository::new()),
+            stream_store: StreamStore(InMemoryStreamRepository::new()),
+        }
+    }
+}
+
+/// Builds the full Ironic + Axum + OpenAPI + WebSocket + SSE + MCP application.
+///
+/// # Errors
+///
+/// Returns [`ServerError`] when module compilation, seeding, or router construction fails.
+pub async fn build_application(
+    infra: InfrastructureHandles,
+) -> Result<Application<OpenApiAxumApplication>, ServerError> {
+    register_health_indicator(Arc::new(PostgresHealthIndicator::new(
+        infra.database.clone(),
+    )));
+    register_health_indicator(Arc::new(StateHealthIndicator::new(Arc::clone(
+        &infra.state,
+    ))));
+    register_health_indicator(Arc::new(BusHealthIndicator::new(Arc::clone(&infra.bus))));
+
+    let lazy_gateway = Arc::new(OnceLock::<GatewayHttpState>::new());
+    let lazy_mcp = Arc::new(OnceLock::<McpHttpState>::new());
+
+    let gw_cell = Arc::clone(&lazy_gateway);
+    let mcp_cell = Arc::clone(&lazy_mcp);
+
+    let openapi_config = OpenApiConfig::new("agents-server API", env!("CARGO_PKG_VERSION"))
+        .description("Distributed agent harness control plane built on Ironic")
+        .security_scheme(
+            "bearerAuth",
+            SecurityScheme::HttpBearer {
+                bearer_format: Some("JWT".to_owned()),
+            },
+        );
+
+    let cors = CorsConfig::new().allowed_origins(infra.config.trusted_origins.clone());
+    let global_ip_rate_max = infra.config.rate_limit_max_requests.saturating_mul(10);
+    let rate_win = infra.config.rate_limit_window_secs;
+
+    let app = Application::builder()
+        .module(AppModule::definition())
+        .override_provider(ProviderDefinition::value(infra.config))
+        .override_provider(ProviderDefinition::value(StateStore(infra.state)))
+        .override_provider(ProviderDefinition::value(BusClient(infra.bus)))
+        .override_provider(ProviderDefinition::value(AdmissionStore(infra.admission)))
+        .override_provider(ProviderDefinition::value(infra.audit_store))
+        .override_provider(ProviderDefinition::value(infra.auth_store))
+        .override_provider(ProviderDefinition::value(infra.session_store))
+        .override_provider(ProviderDefinition::value(infra.task_store))
+        .override_provider(ProviderDefinition::value(infra.stream_store))
+        .middleware(SecurityHeadersMiddleware::new(
+            SecurityHeadersConfig::default(),
+        ))
+        .middleware(RateLimitMiddleware::new(global_ip_rate_max, rate_win))
+        .middleware(CorsMiddleware::new(cors))
+        .platform(
+            AxumAdapter::new()
+                .compression()
+                .request_body_limit(4 * 1024 * 1024)
+                .request_timeout(Duration::from_secs(30))
+                .configure_router(move |router| {
+                    mount_native_stream_and_mcp_routes(router, gw_cell, mcp_cell)
+                })
+                .with_openapi(openapi_config)
+                .swagger_ui("/docs"),
+        )
+        .build()
+        .await
+        .map_err(|err| ServerError::Internal(format!("application build failed: {err}")))?;
+
+    let auth = app
+        .container()
+        .resolve::<AuthService>()
+        .await
+        .map_err(|e| ServerError::Internal(e.to_string()))?;
+    let gateway = app
+        .container()
+        .resolve::<GatewayService>()
+        .await
+        .map_err(|e| ServerError::Internal(e.to_string()))?;
+    let mcp = app
+        .container()
+        .resolve::<McpHostService>()
+        .await
+        .map_err(|e| ServerError::Internal(e.to_string()))?;
+
+    auth.seed_admin_if_configured().await?;
+
+    let _ = lazy_gateway.set(GatewayHttpState {
+        auth: Arc::clone(&auth),
+        gateway,
+    });
+    let _ = lazy_mcp.set(McpHttpState { auth, mcp });
+
+    Ok(app)
+}
+
+/// Spawns a periodic background worker enforcing [`AuditService::prune_expired`] retention.
+///
+/// # Errors
+///
+/// Returns [`ServerError`] when [`AuditService`] cannot be resolved from the container.
+pub async fn start_retention_worker(
+    app: &Application<OpenApiAxumApplication>,
+    interval: Duration,
+) -> Result<tokio::task::JoinHandle<()>, ServerError> {
+    let audit = app
+        .container()
+        .resolve::<crate::modules::audit::services::AuditService>()
+        .await
+        .map_err(|e| ServerError::Internal(e.to_string()))?;
+
+    let handle = tokio::spawn(async move {
+        let mut ticker = tokio::time::interval(interval);
+        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+        ticker.tick().await;
+        loop {
+            ticker.tick().await;
+            match audit.prune_expired().await {
+                Ok(pruned) if pruned > 0 => {
+                    tracing::info!(pruned, "audit retention worker archived expired entries");
+                }
+                Ok(_) => {}
+                Err(err) => {
+                    tracing::warn!(error = %err, "audit retention worker iteration failed");
+                }
+            }
+        }
+    });
+    Ok(handle)
+}
+
+fn mount_native_stream_and_mcp_routes(
+    router: Router,
+    gw_cell: Arc<OnceLock<GatewayHttpState>>,
+    mcp_cell: Arc<OnceLock<McpHttpState>>,
+) -> Router {
+    router.merge(gateway_lazy_router(gw_cell)).route(
+        "/mcp",
+        axum::routing::post(move |req: AxumRequest<Body>| {
+            let mcp_cell = Arc::clone(&mcp_cell);
+            async move { dispatch_lazy_mcp(req, mcp_cell).await }
+        }),
+    )
+}
+
+async fn dispatch_lazy_mcp(req: AxumRequest<Body>, cell: Arc<OnceLock<McpHttpState>>) -> Response {
+    let Some(state) = cell.get() else {
+        return (StatusCode::SERVICE_UNAVAILABLE, "mcp initializing").into_response();
+    };
+    let sub_router = protected_mcp_router(state.clone());
+    match sub_router.oneshot(req).await {
+        Ok(resp) => resp,
+        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+    }
+}
