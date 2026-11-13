@@ -35,7 +35,7 @@ impl AuditController {
         tag = "Audit",
         security = "bearerAuth"
     )]
-    #[resp(200, "Audit log entries")]
+    #[resp(200, "Audit log entries", json = Vec<AuditLogRecord>)]
     #[resp(403, "Admin scope required")]
     async fn list(
         &self,

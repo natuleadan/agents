@@ -37,7 +37,8 @@ impl SwarmController {
         tag = "Swarm",
         security = "bearerAuth"
     )]
-    #[resp(200, "Created subagent handoff")]
+    #[body(json = CreateHandoffDto)]
+    #[resp(200, "Created subagent handoff", json = SwarmHandoffEntity)]
     #[resp(403, "Permission escalation rejected")]
     async fn create_handoff(
         &self,
@@ -60,7 +61,7 @@ impl SwarmController {
         tag = "Swarm",
         security = "bearerAuth"
     )]
-    #[resp(200, "Swarm handoffs")]
+    #[resp(200, "Swarm handoffs", json = Vec<SwarmHandoffEntity>)]
     async fn list_handoffs(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -77,7 +78,8 @@ impl SwarmController {
         tag = "Swarm",
         security = "bearerAuth"
     )]
-    #[resp(200, "Dispatched swarm message")]
+    #[body(json = SendSwarmMessageDto)]
+    #[resp(200, "Dispatched swarm message", json = MediatedSwarmMessage)]
     async fn send_message(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -96,7 +98,7 @@ impl SwarmController {
         tag = "Swarm",
         security = "bearerAuth"
     )]
-    #[resp(200, "Swarm messages")]
+    #[resp(200, "Swarm messages", json = Vec<MediatedSwarmMessage>)]
     async fn list_messages(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -113,6 +115,7 @@ impl SwarmController {
         tag = "Swarm",
         security = "bearerAuth"
     )]
+    #[body(json = PutBlackboardDto)]
     #[resp(200, "Stored blackboard value")]
     async fn put_blackboard(
         &self,

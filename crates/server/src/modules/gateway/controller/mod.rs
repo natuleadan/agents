@@ -59,7 +59,7 @@ impl GatewayController {
         tag = "Gateway",
         security = "bearerAuth"
     )]
-    #[resp(200, "Ordered stream envelopes")]
+    #[resp(200, "Ordered stream envelopes", json = Vec<EventEnvelope>)]
     async fn replay(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

@@ -2,10 +2,11 @@
 
 use agents_protocol::{IsolationKind, NodeStatus, RuntimeKind, TraefikPreviewRoute};
 use garde::Validate;
+use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
 
 /// Heartbeat payload sent by `agents-boxer` daemons to auto-register on the cluster.
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeHeartbeatDto {
     #[garde(length(min = 2, max = 128))]
@@ -27,7 +28,7 @@ pub struct NodeHeartbeatDto {
 }
 
 /// Distributed Traefik preview route upsert/revocation synchronized by a Boxer node.
-#[derive(Debug, Clone, Deserialize, Serialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Serialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewSyncDto {
     #[garde(skip)]

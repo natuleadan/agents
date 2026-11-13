@@ -15,6 +15,9 @@ pub mod task;
 pub mod version;
 pub mod workflow;
 
+#[cfg(feature = "openapi")]
+pub mod openapi;
+
 pub use artifact::{ArtifactEntry, ArtifactManifest, ArtifactValidationError, is_valid_sha256_hex};
 pub use auth::{
     ApiKeyMetadata, ApiKeyScope, CreateApiKeyRequest, LoginRequest, RefreshRequest, TokenPair,

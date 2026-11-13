@@ -2,10 +2,11 @@
 
 use agents_protocol::{EventEnvelope, HandshakeRequest, HandshakeResponse};
 use garde::Validate;
+use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
 
 /// Query parameters for replaying or streaming session events after a given sequence number.
-#[derive(Debug, Clone, Default, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct StreamReplayQuery {
     #[garde(skip)]

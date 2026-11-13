@@ -35,7 +35,8 @@ impl AutocronController {
         tag = "Autocron",
         security = "bearerAuth"
     )]
-    #[resp(200, "Created Autocron schedule")]
+    #[body(json = CreateScheduleDto)]
+    #[resp(200, "Created Autocron schedule", json = AutocronScheduleEntity)]
     async fn create_schedule(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -53,7 +54,7 @@ impl AutocronController {
         tag = "Autocron",
         security = "bearerAuth"
     )]
-    #[resp(200, "Owned Autocron schedules")]
+    #[resp(200, "Owned Autocron schedules", json = Vec<AutocronScheduleEntity>)]
     async fn list_schedules(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -69,7 +70,8 @@ impl AutocronController {
         tag = "Autocron",
         security = "bearerAuth"
     )]
-    #[resp(200, "Triggered workflow run outcome")]
+    #[body(json = ExecuteScheduleDto)]
+    #[resp(200, "Triggered workflow run outcome", json = AutocronTickOutcome)]
     #[resp(409, "Budget cap exhausted or schedule disabled")]
     async fn run_schedule(
         &self,
@@ -92,7 +94,8 @@ impl AutocronController {
         tag = "Autocron",
         security = "bearerAuth"
     )]
-    #[resp(200, "Updated Autocron schedule")]
+    #[body(json = ToggleScheduleDto)]
+    #[resp(200, "Updated Autocron schedule", json = AutocronScheduleEntity)]
     async fn toggle_schedule(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -114,7 +117,8 @@ impl AutocronController {
         tag = "Autocron",
         security = "bearerAuth"
     )]
-    #[resp(200, "Webhook run dispatched")]
+    #[body(json = TriggerWebhookDto)]
+    #[resp(200, "Webhook run dispatched", json = AutocronTickOutcome)]
     async fn trigger_webhook(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

@@ -1,10 +1,11 @@
 //! Domain entities for registered VLAN Boxer nodes and distributed preview routes.
 
 use agents_protocol::{BoxerNodeAnnouncement, PreviewRouteSync};
+use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
 
 /// Snapshot of active auto-registered VLAN worker nodes.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct NodeListResponse {
     pub nodes: Vec<BoxerNodeAnnouncement>,
@@ -12,7 +13,7 @@ pub struct NodeListResponse {
 }
 
 /// Acknowledgment returned after syncing a dynamic preview route.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct PreviewSyncAck {
     pub route_id: String,

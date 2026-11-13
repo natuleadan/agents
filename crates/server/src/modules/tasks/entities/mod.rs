@@ -1,7 +1,9 @@
 //! Durable fenced task entity and strict state-machine transitions.
 
 use agents_protocol::{FencingToken, InteractionMode, StopReason, TaskState};
+use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 /// Persisted execution task coordinated between Server and Boxer via NATS & PostgreSQL.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
@@ -29,6 +31,34 @@ pub struct TaskEntity {
     pub output_summary: Option<String>,
     pub created_at: u64,
     pub updated_at: u64,
+}
+
+impl OpenApiSchema for TaskEntity {
+    fn openapi_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "TaskEntity",
+            "required": ["id", "sessionId", "ownerId", "prompt", "state", "mode", "fencingToken", "version", "createdAt", "updatedAt"],
+            "properties": {
+                "id": { "type": "string", "example": "tsk_01j7task001" },
+                "sessionId": { "type": "string", "example": "ses_01j7sess001" },
+                "ownerId": { "type": "string", "example": "usr_01j7abc" },
+                "prompt": { "type": "string", "example": "Build responsive HTML landing page" },
+                "state": TaskState::openapi_schema(),
+                "mode": InteractionMode::openapi_schema(),
+                "fencingToken": FencingToken::openapi_schema(),
+                "leaseHolder": { "type": "string", "nullable": true, "example": "boxer-vlan-worker-01" },
+                "leaseExpiresAt": { "type": "integer", "nullable": true, "example": 1731513630000_u64 },
+                "idempotencyKey": { "type": "string", "nullable": true, "example": "idem_12345" },
+                "version": { "type": "integer", "example": 1 },
+                "exitCode": { "type": "integer", "nullable": true, "example": 0 },
+                "stopReason": { "type": "string", "nullable": true, "example": "end_turn" },
+                "outputSummary": { "type": "string", "nullable": true, "example": "Build completed successfully" },
+                "createdAt": { "type": "integer", "example": 1731513600 },
+                "updatedAt": { "type": "integer", "example": 1731513605 }
+            }
+        })
+    }
 }
 
 impl TaskEntity {
