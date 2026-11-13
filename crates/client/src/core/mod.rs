@@ -1,7 +1,9 @@
 pub mod adapters;
 pub mod backend;
+pub mod ota_store;
 pub mod state;
 pub mod store;
+pub mod updater;
 
 use thiserror::Error;
 
@@ -33,6 +35,7 @@ pub use backend::{
     HttpMethod, HttpRequest, HttpResponse, ProviderCapabilities, SandboxProvider, SessionSummary,
     TaskSubmission, Transport,
 };
+pub use ota_store::{OtaSlotStore, TrialDecision, TrustState};
 pub use state::{
     ActiveView, AppAction, AppState, AttachmentEntry, AuthState, ClusterNodeEntry, ContextMeter,
     DiffHunk, DiffLine, DiffLineKind, LoginFormState, NotificationCue, PreviewEntry,
@@ -41,4 +44,9 @@ pub use state::{
 pub use store::{
     ChunkCoalescer, CoalesceOutcome, DraftRecord, DraftStore, IdempotentActionQueue,
     InMemorySecretStore, OfflineStartupState, QueuedAction, ScopedKeychainStore, SecretStore,
+};
+pub use updater::{
+    AvailableUpdate, OtaPackageAsset, PlatformAsset, ReleaseKeyCertificate, ReleaseManifest,
+    RevocationList, SignedOtaPackage, UpdateError, UpdateKind, UpdaterConfig, check_manifest,
+    key_id_from_b64, sha256_hex, verify_download_bytes, verify_signed_nshpkg,
 };

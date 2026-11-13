@@ -5,6 +5,7 @@ import { spawnSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
+import { verifyRemoteDistributed, verifyRemoteMonolithic } from "./e2e-remote-verify.mjs";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -286,6 +287,13 @@ export async function runE2eCloud(cfg: CloudConfig, logger: (line: string) => vo
       const mono = await client.createVps(resolvedProjectId, payloads.monolithic);
       created.push(mono);
       logger(`[INFO] Created Mode A VPS id=${mono.id} ip=${mono.publicIpv4}`);
+      await verifyRemoteMonolithic({
+        root: ROOT,
+        vps: mono,
+        keyPath: resolvedCfg.sshKeyPath,
+        keepDemo: cfg.keepDemo,
+        logger,
+      });
     }
     if (cfg.mode === "distributed" || cfg.mode === "all") {
       if (!resolvedVlan) throw new Error("Distributed Mode B requires a private VLAN network ID");
@@ -294,6 +302,14 @@ export async function runE2eCloud(cfg: CloudConfig, logger: (line: string) => vo
       const box = await client.createVps(resolvedProjectId, payloads.distBoxer);
       created.push(box);
       logger(`[INFO] Created Mode B VPS pair server=${srv.id} (${srv.publicIpv4}) boxer=${box.id} (${box.vlanIp})`);
+      await verifyRemoteDistributed({
+        root: ROOT,
+        serverVps: srv,
+        boxerVps: box,
+        keyPath: resolvedCfg.sshKeyPath,
+        keepDemo: cfg.keepDemo,
+        logger,
+      });
     }
   });
 

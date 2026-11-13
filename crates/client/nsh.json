@@ -1,0 +1,13 @@
+{
+  "name": "Agents",
+  "id": "dev.natuleadan.agents",
+  "version": "0.1.0",
+  "build": 1,
+  "updater": {
+    "github": "natuleadan/agents"
+  },
+  "android": {
+    "targetSdk": 35,
+    "usesCleartextTraffic": true
+  }
+}

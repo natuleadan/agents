@@ -1,0 +1,109 @@
+name: Ephemeral Live Cloud E2E
+
+# Provider-agnostic cloud VPS deployment & DropGuard verification pipeline.
+# Provisions ephemeral Debian 12 VPS node(s) using generic API credentials,
+# validates monolithic & private-VLAN distributed topologies over real SSH + HTTP,
+# and guarantees clean destruction via DropGuard unless `keep_demo` is requested.
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Topology mode to verify"
+        required: true
+        type: choice
+        default: monolithic
+        options:
+          - monolithic
+          - distributed
+          - all
+      keep_demo:
+        description: "Preserve provisioned demo VPS after pass for manual browser testing"
+        required: false
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: e2e-cloud-live
+  cancel-in-progress: false
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  CARGO_TERM_COLOR: always
+
+jobs:
+  e2e-cloud:
+    name: Live Cloud Provisioning & E2E (${{ inputs.mode }})
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      - name: Configure ephemeral CI SSH keypair
+        env:
+          VPS_PROVIDER_SSH_PRIVATE_KEY: ${{ secrets.VPS_PROVIDER_SSH_PRIVATE_KEY }}
+        run: |
+          mkdir -p .local
+          if [ -n "${VPS_PROVIDER_SSH_PRIVATE_KEY:-}" ]; then
+            printf '%s\n' "$VPS_PROVIDER_SSH_PRIVATE_KEY" > "$RUNNER_TEMP/e2e_id_ed25519"
+          else
+            ssh-keygen -t ed25519 -N "" -f "$RUNNER_TEMP/e2e_id_ed25519"
+          fi
+          chmod 600 "$RUNNER_TEMP/e2e_id_ed25519"
+
+      - name: Build release daemons and installer
+        run: cargo build --release -p agents-server -p agents-boxer -p agents-installer
+
+      - name: Execute cloud E2E harness with DropGuard cleanup
+        env:
+          VPS_PROVIDER_API_BASE: ${{ vars.VPS_PROVIDER_API_BASE }}
+          VPS_PROVIDER_API_KEY: ${{ secrets.VPS_PROVIDER_API_KEY }}
+          VPS_PROVIDER_PROJECT_ID: ${{ vars.VPS_PROVIDER_PROJECT_ID }}
+          VPS_PROVIDER_VLAN_ID: ${{ vars.VPS_PROVIDER_VLAN_ID }}
+          VPS_PROVIDER_REGION: ${{ vars.VPS_PROVIDER_REGION || 'us-mia-1' }}
+          VPS_PROVIDER_PLAN: ${{ vars.VPS_PROVIDER_PLAN || 'gp.nano' }}
+          VPS_PROVIDER_TEMPLATE: ${{ vars.VPS_PROVIDER_TEMPLATE || 'debian-12' }}
+          VPS_PROVIDER_SSH_KEY_ID: ${{ vars.VPS_PROVIDER_SSH_KEY_ID }}
+          VPS_PROVIDER_SSH_KEY_PATH: ${{ runner.temp }}/e2e_id_ed25519
+        run: |
+          if [ -z "${VPS_PROVIDER_API_KEY:-}" ] || [ -z "${VPS_PROVIDER_API_BASE:-}" ]; then
+            echo "Missing secrets.VPS_PROVIDER_API_KEY or vars.VPS_PROVIDER_API_BASE; configure repository secrets/variables first."
+            exit 1
+          fi
+          FLAGS="--live --mode ${{ inputs.mode }}"
+          if [ "${{ inputs.keep_demo }}" = "true" ]; then
+            FLAGS="$FLAGS --keep-demo"
+          fi
+          node tools/e2e-cloud.ts $FLAGS
+
+      - name: Verify zero orphan VPS instances remain when keep_demo is false
+        if: ${{ always() && !inputs.keep_demo }}
+        env:
+          VPS_PROVIDER_API_BASE: ${{ vars.VPS_PROVIDER_API_BASE }}
+          VPS_PROVIDER_API_KEY: ${{ secrets.VPS_PROVIDER_API_KEY }}
+        run: |
+          if [ -z "${VPS_PROVIDER_API_KEY:-}" ] || [ -z "${VPS_PROVIDER_API_BASE:-}" ]; then
+            echo "Skipping orphan cleanup check: VPS_PROVIDER_API_KEY or VPS_PROVIDER_API_BASE not configured."
+            exit 0
+          fi
+          node -e '
+            import("./tools/e2e-cloud.ts").then(async ({ CloudApiClient }) => {
+              const client = new CloudApiClient(process.env.VPS_PROVIDER_API_BASE, process.env.VPS_PROVIDER_API_KEY);
+              const remaining = (await client.listVps()).filter((v) => String(v.name || "").startsWith("agents-e2e-"));
+              if (remaining.length > 0) {
+                for (const r of remaining) await client.destroyVps(String(r.id));
+                throw new Error("Cleaned up leftover test VPS instances: " + remaining.map((r) => r.id).join(", "));
+              }
+              console.log("PASS: zero leftover agents-e2e-* VPS instances.");
+            }).catch((e) => { console.error(e); process.exit(1); });
+          '
