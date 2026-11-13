@@ -13,6 +13,18 @@ pub struct WorkflowEntity {
     pub name: String,
     pub nodes: Vec<WorkflowNode>,
     pub edges: Vec<WorkflowEdge>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook_slug: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub render_slug: Option<String>,
+    #[serde(default)]
+    pub approved: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved_at: Option<u64>,
+    #[serde(default)]
+    pub created_by_agent: bool,
     pub created_at: u64,
     pub updated_at: u64,
 }
@@ -25,6 +37,10 @@ impl WorkflowEntity {
             name: self.name.clone(),
             nodes: self.nodes.clone(),
             edges: self.edges.clone(),
+            webhook_slug: self.webhook_slug.clone(),
+            render_slug: self.render_slug.clone(),
+            approved: Some(self.approved),
+            created_by_agent: Some(self.created_by_agent),
         }
     }
 }
@@ -79,4 +95,37 @@ pub struct WorkflowRunEntity {
     pub started_at: u64,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub completed_at: Option<u64>,
+}
+
+/// Rendered HTML or dynamic payload served at `/render/:slug`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RenderedSlugEntity {
+    pub slug: String,
+    pub workflow_id: String,
+    pub content_type: String,
+    pub content: String,
+    pub approved: bool,
+    pub updated_at: u64,
+}
+
+/// Recorded step inside durable agent step logger for crash replay.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DurableStepEntity {
+    pub step_id: String,
+    pub task_id: String,
+    pub session_id: String,
+    pub step_index: u32,
+    pub step_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub call_id: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tool_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub input_payload: Option<Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub output_payload: Option<Value>,
+    pub is_error: bool,
+    pub recorded_at_ms: u64,
 }

@@ -2,11 +2,16 @@
 //! branching session tree with atomic tool compaction, host hooks, and multi-provider adapters.
 
 mod batch;
+pub mod durable;
 pub mod engine;
 pub mod hooks;
 pub mod providers;
 pub mod session_tree;
 
+pub use durable::{
+    DurableReplayTracker, DurableStepKind, DurableStepLogger, DurableStepRecord,
+    InMemoryDurableLogger,
+};
 pub use engine::{
     NativeAgentRuntime, NativeRuntimeConfig, NativeTurnOutcome, RetryAuditEntry, RuntimeTool,
     ToolCallRequest, ToolExecutionResult,
