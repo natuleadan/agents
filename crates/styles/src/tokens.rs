@@ -420,6 +420,39 @@ impl Theme {
         });
         Ok(serde_json::to_string_pretty(&doc)?)
     }
+
+    /// Generates an atomic CSS custom-properties stylesheet supporting light & dark themes.
+    #[must_use]
+    pub fn to_css_stylesheet(&self) -> String {
+        format!(
+            ":root {{\n  --radius: {}px;\n  --font-sans: {};\n  --font-mono: {};\n{}\n}}\n:root[data-theme=\"dark\"], .dark {{\n{}\n}}\n",
+            self.radius.base_pt,
+            self.typography.font_sans,
+            self.typography.font_mono,
+            palette_css_vars_block(&self.light),
+            palette_css_vars_block(&self.dark),
+        )
+    }
+}
+
+fn palette_css_vars_block(p: &PaletteTokens) -> String {
+    let val = palette_css_map(p);
+    let mut lines = Vec::new();
+    if let Some(obj) = val.as_object() {
+        for (k, v) in obj {
+            if let Some(s) = v.as_str() {
+                lines.push(format!("  --{k}: {s};"));
+            }
+        }
+    }
+    lines.extend([
+        format!("  --status-working: {};", p.status_working.to_css()),
+        format!("  --status-blocked: {};", p.status_blocked.to_css()),
+        format!("  --status-done: {};", p.status_done.to_css()),
+        format!("  --status-idle: {};", p.status_idle.to_css()),
+        format!("  --status-warning: {};", p.status_warning.to_css()),
+    ]);
+    lines.join("\n")
 }
 
 fn palette_css_map(p: &PaletteTokens) -> serde_json::Value {

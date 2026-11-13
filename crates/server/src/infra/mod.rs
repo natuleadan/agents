@@ -7,6 +7,7 @@ pub mod db;
 pub mod error;
 pub mod state;
 pub mod stream;
+pub mod webui;
 
 pub use admission::{AdmissionController, AdmissionPermit};
 pub use bus::{InMemoryMessageBus, MessageBus, NatsMessageBus};

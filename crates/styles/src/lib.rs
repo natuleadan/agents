@@ -27,8 +27,8 @@ pub mod prelude {
         LabelSpec, SeparatorOrientation, SeparatorSpec, TableColumnSpec, TableSpec, TextareaSpec,
     };
     pub use crate::nsh::{
-        AccessibilityRole, AlignItems, FlexDirection, Idiom, JustifyContent, NshNode,
-        ResponsiveClass, Signal, SurfaceMetrics, TargetPlatform, ViewStyle,
+        AccessibilityRole, AlignItems, FlexDirection, Idiom, JustifyContent, NshMountTrace,
+        NshNode, ResponsiveClass, Signal, SurfaceMetrics, TargetPlatform, ViewStyle,
     };
     pub use crate::tokens::{
         Appearance, ColorRgba, PaletteTokens, RadiusTokens, SpacingScale, Theme, ThemeError,

@@ -3,12 +3,12 @@ use std::sync::Arc;
 use agents_protocol::{EventEnvelope, InteractionMode, TokenPair};
 use agents_styles::prelude::*;
 
-use super::panels;
+use super::{data_views, login, panels};
 use crate::core::ClientError;
 use crate::core::backend::{
     ActionReceipt, BackendTarget, ControlAction, SandboxProvider, SessionSummary, TaskSubmission,
 };
-use crate::core::state::{ActiveView, AppAction, AppState, PreviewEntry, dispatch};
+use crate::core::state::{ActiveView, AppAction, AppState, AuthState, PreviewEntry, dispatch};
 use crate::core::store::{
     ChunkCoalescer, CoalesceOutcome, DraftRecord, DraftStore, IdempotentActionQueue,
     OfflineStartupState, SecretStore,
@@ -25,13 +25,20 @@ pub fn render_app_shell(state: &AppState, metrics: SurfaceMetrics) -> NshNode {
     let header = panels::build_header_bar(state, &theme, compact);
     let nav = panels::build_navigation(state, metrics, &theme);
     let workspace = panels::build_workspace_panel(state, &theme);
+    let cluster_metrics = data_views::build_cluster_and_metrics_panel(state, &theme);
     let preview = panels::build_preview_panel(state, &theme);
+
+    let center_col = NshNode::view("center-column")
+        .direction(FlexDirection::Column)
+        .gap(theme.spacing.md)
+        .child(workspace)
+        .child(cluster_metrics);
 
     let body = if compact {
         NshNode::view("mobile-shell")
             .direction(FlexDirection::Column)
             .gap(theme.spacing.sm)
-            .child(workspace)
+            .child(center_col)
             .child(preview)
             .child(nav)
     } else {
@@ -39,7 +46,7 @@ pub fn render_app_shell(state: &AppState, metrics: SurfaceMetrics) -> NshNode {
             .direction(FlexDirection::Row)
             .gap(theme.spacing.md)
             .child(nav)
-            .child(workspace)
+            .child(center_col)
             .child(preview)
     };
 
@@ -53,13 +60,28 @@ pub fn render_app_shell(state: &AppState, metrics: SurfaceMetrics) -> NshNode {
     )
     .fg(p.muted_foreground);
 
-    NshNode::view("app-root")
+    let mut root = NshNode::view("app-root")
         .direction(FlexDirection::Column)
         .bg(p.background)
         .fg(p.foreground)
-        .child(header)
-        .child(body)
-        .child(target_tag)
+        .child(header);
+
+    if state.active_view == ActiveView::Onboarding
+        || state.login.auth_state != AuthState::Authenticated
+    {
+        root = root.child(login::build_login_screen(state, metrics, &theme));
+    }
+
+    root = root.child(body);
+
+    if matches!(
+        state.active_view,
+        ActiveView::CommandPalette | ActiveView::UpdateModal
+    ) {
+        root = root.child(data_views::build_command_and_update_dialogs(state, &theme));
+    }
+
+    root.child(target_tag)
 }
 
 /// High-level client orchestrator tying [`SandboxProvider`], stores, queues, and UI state.
@@ -115,7 +137,25 @@ impl ClientController {
         email: &str,
         password: &str,
     ) -> Result<(), ClientError> {
-        let pair = self.provider.login(email, password).await?;
+        dispatch(
+            &mut self.state,
+            AppAction::SetAuthState(AuthState::Authenticating, None),
+        );
+        let pair = match self.provider.login(email, password).await {
+            Ok(p) => p,
+            Err(err) => {
+                let auth_err = match &err {
+                    ClientError::HttpStatus { status: 429, .. } => AuthState::RateLimited,
+                    ClientError::Offline(_) | ClientError::Transport(_) => AuthState::Offline,
+                    _ => AuthState::InvalidCredentials,
+                };
+                dispatch(
+                    &mut self.state,
+                    AppAction::SetAuthState(auth_err, Some(err.to_string())),
+                );
+                return Err(err);
+            }
+        };
         self.secrets
             .store_secret("access_token", &pair.access_token)?;
         if !pair.refresh_token.is_empty() {
@@ -123,7 +163,10 @@ impl ClientController {
                 .store_secret("refresh_token", &pair.refresh_token)?;
         }
         self.tokens = Some(pair);
-        dispatch(&mut self.state, AppAction::SetView(ActiveView::Workspace));
+        dispatch(
+            &mut self.state,
+            AppAction::SetAuthState(AuthState::Authenticated, None),
+        );
         Ok(())
     }
 

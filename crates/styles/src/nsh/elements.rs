@@ -1,5 +1,7 @@
+use crate::components::ChartSeriesSpec;
 use crate::tokens::ColorRgba;
 use serde::{Deserialize, Serialize};
+use std::collections::BTreeSet;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -43,6 +45,9 @@ pub enum AccessibilityRole {
     Badge,
     Heading,
     WebView,
+    Table,
+    Chart,
+    Alert,
 }
 
 /// Typed layout and surface styles for declarative NSH view nodes.
@@ -60,14 +65,32 @@ pub struct ViewStyle {
     pub flex_grow: f32,
 }
 
+/// Deterministic mount summary inspired by NSH `--trace` verification output.
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
+pub struct NshMountTrace {
+    pub total_nodes: usize,
+    pub interactive_controls: usize,
+    pub table_rows: usize,
+    pub chart_series: usize,
+    pub test_ids: Vec<String>,
+    pub duplicate_test_ids: Vec<String>,
+}
+
 /// Cross-platform UI element tree projected cleanly to native views, DOM HTML, or test trees.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct NshNode {
     pub id: String,
+    pub test_id: Option<String>,
     pub kind: String,
     pub role: AccessibilityRole,
     pub text: Option<String>,
     pub label: Option<String>,
+    pub placeholder: Option<String>,
+    pub input_kind: Option<String>,
+    pub columns: Vec<String>,
+    pub rows: Vec<Vec<String>>,
+    pub series: Vec<ChartSeriesSpec>,
+    pub series_colors: Vec<ColorRgba>,
     pub style: ViewStyle,
     pub children: Vec<NshNode>,
 }
@@ -75,12 +98,20 @@ pub struct NshNode {
 impl NshNode {
     #[must_use]
     pub fn view(id: impl Into<String>) -> Self {
+        let id_str = id.into();
         Self {
-            id: id.into(),
+            test_id: Some(id_str.clone()),
+            id: id_str,
             kind: "View".to_owned(),
             role: AccessibilityRole::Region,
             text: None,
             label: None,
+            placeholder: None,
+            input_kind: None,
+            columns: Vec::new(),
+            rows: Vec::new(),
+            series: Vec::new(),
+            series_colors: Vec::new(),
             style: ViewStyle::default(),
             children: Vec::new(),
         }
@@ -88,43 +119,33 @@ impl NshNode {
 
     #[must_use]
     pub fn text(id: impl Into<String>, content: impl Into<String>) -> Self {
-        Self {
-            id: id.into(),
-            kind: "Text".to_owned(),
-            role: AccessibilityRole::Status,
-            text: Some(content.into()),
-            label: None,
-            style: ViewStyle::default(),
-            children: Vec::new(),
-        }
+        let mut node = Self::view(id);
+        node.kind = "Text".to_owned();
+        node.role = AccessibilityRole::Status;
+        node.text = Some(content.into());
+        node
     }
 
     #[must_use]
     pub fn button(id: impl Into<String>, label: impl Into<String>) -> Self {
         let text_val = label.into();
-        Self {
-            id: id.into(),
-            kind: "Button".to_owned(),
-            role: AccessibilityRole::Button,
-            text: Some(text_val.clone()),
-            label: Some(text_val),
-            style: ViewStyle::default(),
-            children: Vec::new(),
-        }
+        let mut node = Self::view(id);
+        node.kind = "Button".to_owned();
+        node.role = AccessibilityRole::Button;
+        node.text = Some(text_val.clone());
+        node.label = Some(text_val);
+        node
     }
 
     #[must_use]
     pub fn badge(id: impl Into<String>, label: impl Into<String>) -> Self {
         let text_val = label.into();
-        Self {
-            id: id.into(),
-            kind: "Badge".to_owned(),
-            role: AccessibilityRole::Badge,
-            text: Some(text_val.clone()),
-            label: Some(text_val),
-            style: ViewStyle::default(),
-            children: Vec::new(),
-        }
+        let mut node = Self::view(id);
+        node.kind = "Badge".to_owned();
+        node.role = AccessibilityRole::Badge;
+        node.text = Some(text_val.clone());
+        node.label = Some(text_val);
+        node
     }
 
     #[must_use]
@@ -133,15 +154,18 @@ impl NshNode {
         url: impl Into<String>,
         title: impl Into<String>,
     ) -> Self {
-        Self {
-            id: id.into(),
-            kind: "WebView".to_owned(),
-            role: AccessibilityRole::WebView,
-            text: Some(url.into()),
-            label: Some(title.into()),
-            style: ViewStyle::default(),
-            children: Vec::new(),
-        }
+        let mut node = Self::view(id);
+        node.kind = "WebView".to_owned();
+        node.role = AccessibilityRole::WebView;
+        node.text = Some(url.into());
+        node.label = Some(title.into());
+        node
+    }
+
+    #[must_use]
+    pub fn test_id(mut self, test_id: impl Into<String>) -> Self {
+        self.test_id = Some(test_id.into());
+        self
     }
 
     #[must_use]
@@ -159,6 +183,18 @@ impl NshNode {
     #[must_use]
     pub fn direction(mut self, direction: FlexDirection) -> Self {
         self.style.direction = direction;
+        self
+    }
+
+    #[must_use]
+    pub fn align_items(mut self, align: AlignItems) -> Self {
+        self.style.align_items = align;
+        self
+    }
+
+    #[must_use]
+    pub fn justify_content(mut self, justify: JustifyContent) -> Self {
+        self.style.justify_content = justify;
         self
     }
 
@@ -217,53 +253,53 @@ impl NshNode {
         if let Some(t) = &self.text {
             out.push(t.clone());
         }
+        for row in &self.rows {
+            out.push(row.join(" | "));
+        }
         for child in &self.children {
             out.extend(child.flatten_text_lines());
         }
         out
     }
 
+    /// Collects a deterministic mount trace verifying `testID` uniqueness and mount size.
+    #[must_use]
+    pub fn collect_trace(&self) -> NshMountTrace {
+        let mut trace = NshMountTrace::default();
+        let mut seen = BTreeSet::new();
+        self.walk_trace(&mut trace, &mut seen);
+        trace
+    }
+
+    fn walk_trace(&self, trace: &mut NshMountTrace, seen: &mut BTreeSet<String>) {
+        trace.total_nodes += 1;
+        if matches!(
+            self.role,
+            AccessibilityRole::Button | AccessibilityRole::Textbox
+        ) {
+            trace.interactive_controls += 1;
+        }
+        trace.table_rows += self.rows.len();
+        trace.chart_series += self.series.len();
+        if let Some(tid) = &self.test_id {
+            if !seen.insert(tid.clone()) {
+                trace.duplicate_test_ids.push(tid.clone());
+            }
+            trace.test_ids.push(tid.clone());
+        }
+        for child in &self.children {
+            child.walk_trace(trace, seen);
+        }
+    }
+
     /// Projects this NSH node tree into an escaped HTML fragment for the Web backend.
     #[must_use]
     pub fn render_html_fragment(&self) -> String {
-        let dir = match self.style.direction {
-            FlexDirection::Column => "column",
-            FlexDirection::Row => "row",
-        };
-        let mut css = format!(
-            "display:flex;flex-direction:{dir};gap:{}px;padding:{}px",
-            self.style.gap_pt, self.style.padding_pt
-        );
-        if let Some(bg) = self.style.background {
-            css.push_str(&format!(";background:{}", bg.to_css()));
-        }
-        if let Some(fg) = self.style.foreground {
-            css.push_str(&format!(";color:{}", fg.to_css()));
-        }
-        if let Some(border) = self.style.border {
-            css.push_str(&format!(";border:1px solid {}", border.to_css()));
-        }
-        if let Some(radius) = self.style.radius_pt {
-            css.push_str(&format!(";border-radius:{radius}px"));
-        }
-
-        let id = escape_html(&self.id);
-        let role = format!("{:?}", self.role).to_ascii_lowercase();
-        let mut inner = String::new();
-        if let Some(txt) = &self.text {
-            inner.push_str(&escape_html(txt));
-        }
-        for child in &self.children {
-            inner.push_str(&child.render_html_fragment());
-        }
-        format!(
-            "<div data-nsh-kind=\"{}\" id=\"{id}\" role=\"{role}\" style=\"{css}\">{inner}</div>",
-            escape_html(&self.kind)
-        )
+        super::widgets::project_node_html(self)
     }
 }
 
-fn escape_html(raw: &str) -> String {
+pub(crate) fn escape_html(raw: &str) -> String {
     raw.replace('&', "&amp;")
         .replace('<', "&lt;")
         .replace('>', "&gt;")

@@ -2,7 +2,55 @@ use agents_protocol::{InteractionMode, SetupMode, WorkerStatus};
 use agents_styles::ThemeMode;
 use serde::{Deserialize, Serialize};
 
-use super::backend::{BackendTarget, ControlAction, EffectiveProfile};
+use super::backend::{BackendMode, BackendTarget, ControlAction, EffectiveProfile};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum AuthState {
+    #[default]
+    Unauthenticated,
+    Authenticating,
+    Authenticated,
+    InvalidCredentials,
+    RateLimited,
+    SessionExpired,
+    Offline,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LoginFormState {
+    pub server_url: String,
+    pub email: String,
+    pub password: String,
+    pub mode: BackendMode,
+    pub auth_state: AuthState,
+    pub error_message: Option<String>,
+}
+
+impl Default for LoginFormState {
+    fn default() -> Self {
+        Self {
+            server_url: "http://127.0.0.1:8080".to_owned(),
+            email: String::new(),
+            password: String::new(),
+            mode: BackendMode::Server {
+                base_url: "http://127.0.0.1:8080".to_owned(),
+            },
+            auth_state: AuthState::Unauthenticated,
+            error_message: None,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ClusterNodeEntry {
+    pub node_id: String,
+    pub vlan_ip: String,
+    pub runtime_label: String,
+    pub active_boxes: u32,
+    pub max_boxes: u32,
+    pub status_label: String,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
@@ -146,6 +194,10 @@ pub struct AppState {
     pub setup_mode: SetupMode,
     pub effective_profile: EffectiveProfile,
     pub theme_mode: ThemeMode,
+    pub login: LoginFormState,
+    pub cluster_nodes: Vec<ClusterNodeEntry>,
+    pub latency_samples_ms: Vec<f64>,
+    pub token_samples: Vec<f64>,
     pub provider_choices: Vec<String>,
     pub selected_provider_idx: usize,
     pub model_choices: Vec<String>,
@@ -179,6 +231,10 @@ impl Default for AppState {
             setup_mode: SetupMode::Local,
             effective_profile: target.effective_profile(),
             theme_mode: ThemeMode::Dark,
+            login: LoginFormState::default(),
+            cluster_nodes: Vec::new(),
+            latency_samples_ms: vec![18.0, 22.0, 15.0, 24.0, 14.0],
+            token_samples: vec![1200.0, 3400.0, 5100.0, 6800.0],
             provider_choices: vec![
                 "agents-server".to_owned(),
                 "upstash_box".to_owned(),
@@ -239,6 +295,13 @@ pub enum AppAction {
     ToggleInteractionMode,
     ToggleThemeMode,
     UpdateEffectiveProfile(EffectiveProfile),
+    SetLoginUrl(String),
+    SetLoginEmail(String),
+    SetLoginPassword(String),
+    SetLoginMode(BackendMode),
+    SetAuthState(AuthState, Option<String>),
+    SetClusterNodes(Vec<ClusterNodeEntry>),
+    RecordTelemetrySample { latency_ms: f64, tokens: f64 },
     UpdateComposer(String),
     AddAttachment(AttachmentEntry),
     SetSession(String),
@@ -309,6 +372,29 @@ pub fn dispatch(state: &mut AppState, action: AppAction) {
         AppAction::UpdateEffectiveProfile(profile) => {
             state.setup_mode = profile.setup_mode;
             state.effective_profile = profile;
+        }
+        AppAction::SetLoginUrl(url) => state.login.server_url = url,
+        AppAction::SetLoginEmail(email) => state.login.email = email,
+        AppAction::SetLoginPassword(pw) => state.login.password = pw,
+        AppAction::SetLoginMode(mode) => state.login.mode = mode,
+        AppAction::SetAuthState(auth_state, err) => {
+            state.login.auth_state = auth_state;
+            state.login.error_message = err.clone();
+            state.last_error = err;
+            if auth_state == AuthState::Authenticated {
+                state.active_view = ActiveView::Workspace;
+            }
+        }
+        AppAction::SetClusterNodes(nodes) => state.cluster_nodes = nodes,
+        AppAction::RecordTelemetrySample { latency_ms, tokens } => {
+            state.latency_samples_ms.push(latency_ms);
+            state.token_samples.push(tokens);
+            if state.latency_samples_ms.len() > 24 {
+                state.latency_samples_ms.remove(0);
+            }
+            if state.token_samples.len() > 24 {
+                state.token_samples.remove(0);
+            }
         }
         AppAction::UpdateComposer(text) => state.composer_text = text,
         AppAction::AddAttachment(item) => state.attachments.push(item),
