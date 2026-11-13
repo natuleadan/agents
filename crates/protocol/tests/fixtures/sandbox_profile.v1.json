@@ -1,0 +1,7 @@
+{
+  "mode": "remote",
+  "runtime": { "kind": "thirdParty", "provider": "daytona" },
+  "isolation": "none",
+  "allowHostNative": false,
+  "gatewayUrl": "https://api.daytona.example"
+}

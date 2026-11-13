@@ -1,0 +1,19 @@
+{
+  "seq": 7,
+  "emittedAtMs": 1794500000123,
+  "codec": "events.v1",
+  "sessionId": "ses_01JXYZ",
+  "taskId": "tsk_01JABC",
+  "payload": {
+    "kind": "previewPublished",
+    "routeId": "rte_01",
+    "taskId": "tsk_01JABC",
+    "slug": "burger-demo",
+    "internalHost": "10.0.1.12",
+    "internalPort": 3000,
+    "publicUrl": "https://burger-demo.preview.example.com",
+    "ttlSeconds": 1800,
+    "requiresToken": true,
+    "createdAtMs": 1794500000100
+  }
+}

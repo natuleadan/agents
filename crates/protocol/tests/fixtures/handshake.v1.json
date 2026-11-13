@@ -1,0 +1,15 @@
+{
+  "serverVersion": "0.1.0",
+  "apiGeneration": 1,
+  "minSupportedGeneration": 1,
+  "activeCodecs": ["snapshot.v1", "events.v1"],
+  "capabilities": [
+    "streaming",
+    "live_steering",
+    "swarm",
+    "mcp_host",
+    "autocron",
+    "traefik_preview",
+    "third_party_providers"
+  ]
+}

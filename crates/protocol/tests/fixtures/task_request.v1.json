@@ -1,0 +1,23 @@
+{
+  "taskId": "tsk_01JABC",
+  "sessionId": "ses_01JXYZ",
+  "prompt": "Build a responsive burger landing page in HTML",
+  "timeoutSeconds": 120,
+  "mode": "act",
+  "fencingToken": 42,
+  "idempotencyKey": "idem-123",
+  "sandbox": {
+    "mode": "local",
+    "runtime": { "kind": "docker" },
+    "isolation": "openshell",
+    "allowHostNative": false
+  },
+  "exec": {
+    "workingDir": "/workspace",
+    "timeoutSeconds": 60,
+    "maxMemoryMb": 512,
+    "maxCpus": 1,
+    "envAllowlist": ["PATH", "TERM"],
+    "networkEgress": false
+  }
+}
