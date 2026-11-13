@@ -129,7 +129,55 @@ jetstream {
 }
 EOF
 
-write_file /etc/traefik/traefik.yml <<EOF
+IS_BARE_IP=0
+if [[ -z "${DOMAIN}" || "${DOMAIN}" == "localhost" || "${DOMAIN}" =~ ^[0-9]+\.[0-9]+\.[0-9]+\.[0-9]+$ || "${DOMAIN}" == *:* ]]; then
+  IS_BARE_IP=1
+fi
+
+if [[ "${IS_BARE_IP}" == "1" ]]; then
+  write_file /etc/traefik/traefik.yml <<EOF
+api:
+  dashboard: false
+
+entryPoints:
+  web:
+    address: ":80"
+  websecure:
+    address: ":443"
+
+providers:
+  file:
+    directory: /etc/traefik/dynamic
+    watch: true
+  http:
+    endpoint: "http://127.0.0.1:8080/internal/traefik/dynamic"
+    pollInterval: "2s"
+EOF
+
+  write_file /etc/traefik/dynamic/agents-core.yml <<'EOF'
+http:
+  middlewares:
+    agents-security-headers:
+      headers:
+        contentTypeNosniff: true
+        frameDeny: true
+  routers:
+    agents-api-http:
+      rule: "PathPrefix(`/`)"
+      priority: 1
+      entryPoints:
+        - web
+      service: agents-server
+      middlewares:
+        - agents-security-headers
+  services:
+    agents-server:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8080"
+EOF
+else
+  write_file /etc/traefik/traefik.yml <<EOF
 api:
   dashboard: false
 
@@ -155,9 +203,12 @@ providers:
   file:
     directory: /etc/traefik/dynamic
     watch: true
+  http:
+    endpoint: "http://127.0.0.1:8080/internal/traefik/dynamic"
+    pollInterval: "2s"
 EOF
 
-write_file /etc/traefik/dynamic/agents-core.yml <<EOF
+  write_file /etc/traefik/dynamic/agents-core.yml <<EOF
 http:
   middlewares:
     agents-security-headers:
@@ -182,5 +233,6 @@ http:
         servers:
           - url: "http://127.0.0.1:8080"
 EOF
+fi
 
-echo "[PASS] Server dependencies configured (domain=${DOMAIN}, preview_domain=${PREVIEW_DOMAIN}, vlan=${VLAN_CIDR})"
+echo "[PASS] Server dependencies configured (domain=${DOMAIN}, bare_ip=${IS_BARE_IP}, preview_domain=${PREVIEW_DOMAIN}, vlan=${VLAN_CIDR})"

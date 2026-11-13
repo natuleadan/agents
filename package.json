@@ -14,7 +14,8 @@
   },
   "scripts": {
     "prepare": "husky",
-    "validate": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && node tools/check-scripts.mjs && node tools/release-plan.ts --check && node tools/third-party-notices.mjs --check",
+    "validate": "cargo fmt --all -- --check && cargo clippy --workspace --all-targets -- -D warnings && cargo test --workspace && node --test tools/e2e-cloud.test.mjs && node tools/check-scripts.mjs && node tools/release-plan.ts --check && node tools/third-party-notices.mjs --check",
+    "e2e:dry-run": "node tools/e2e-cloud.ts --dry-run",
     "scripts:check": "node tools/check-scripts.mjs",
     "notices": "node tools/third-party-notices.mjs",
     "notices:check": "node tools/third-party-notices.mjs --check",
