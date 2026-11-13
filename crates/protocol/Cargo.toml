@@ -1,9 +1,9 @@
 [package]
 name = "agents-protocol"
-version = "0.0.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Common protocol types, DTOs and messaging contracts for the agents harness"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [dependencies]

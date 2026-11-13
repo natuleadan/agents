@@ -1,9 +1,9 @@
 [package]
 name = "agents-installer"
-version = "0.0.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "VPS provisioning and environment self-configuration CLI for the agents platform"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [dependencies]

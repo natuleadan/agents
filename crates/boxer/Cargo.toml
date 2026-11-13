@@ -1,9 +1,9 @@
 [package]
 name = "agents-boxer"
-version = "0.0.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Sandbox container runner, dual-loop supervisor, and Traefik preview daemon"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [dependencies]
