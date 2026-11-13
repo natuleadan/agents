@@ -384,6 +384,12 @@ async fn autocron_timezone_budget_cap_webhook_ambient_and_boot_id_crash_recovery
             config: json!({ "prompt": "finish recovered step" }),
         }],
         edges: Vec::new(),
+        webhook_slug: None,
+        render_slug: None,
+        approved: true,
+        approved_by: Some(alice_id.clone()),
+        approved_at: Some(10),
+        created_by_agent: false,
         created_at: 10,
         updated_at: 10,
     };
