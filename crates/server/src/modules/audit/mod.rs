@@ -9,8 +9,10 @@ pub mod services;
 use ironic::prelude::*;
 
 pub use controller::AuditController;
-pub use repositories::{AuditRepository, AuditStore, InMemoryAuditRepository, PgAuditRepository};
-pub use services::AuditService;
+pub use repositories::{
+    AuditRepository, AuditStore, GENESIS_AUDIT_HASH, InMemoryAuditRepository, PgAuditRepository,
+};
+pub use services::{AuditService, compute_entry_hash};
 
 #[derive(Module)]
 #[module(
