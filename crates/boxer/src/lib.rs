@@ -1,5 +1,5 @@
 //! Isolated sandbox supervisor daemon, dual-axis execution matrix,
-//! outbound credential proxy, native agent loop, and Traefik preview publisher.
+//! outbound credential proxy, native agent runtime, swarm trust boundaries, and previews.
 
 #![forbid(unsafe_code)]
 
@@ -11,4 +11,6 @@ pub mod leases;
 pub mod loop_engine;
 pub mod preview;
 pub mod proxy;
+pub mod runtime;
 pub mod sandbox;
+pub mod swarm;
