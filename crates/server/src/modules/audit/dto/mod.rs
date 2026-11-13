@@ -5,7 +5,7 @@ use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
 
 /// Query parameters for filtering recent audit entries.
-#[derive(Debug, Clone, Default, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AuditQueryDto {
     #[garde(length(max = 128))]

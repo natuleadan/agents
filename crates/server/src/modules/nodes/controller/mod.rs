@@ -48,7 +48,7 @@ impl NodesController {
         tag = "Nodes",
         security = "bearerAuth"
     )]
-    #[resp(200, "Active worker nodes")]
+    #[resp(200, "Active worker nodes", json = NodeListResponse)]
     async fn list(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -63,7 +63,8 @@ impl NodesController {
         tag = "Nodes",
         security = "bearerAuth"
     )]
-    #[resp(200, "Registered node snapshot")]
+    #[body(json = NodeHeartbeatDto)]
+    #[resp(200, "Registered node snapshot", json = BoxerNodeAnnouncement)]
     async fn heartbeat(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -81,7 +82,8 @@ impl NodesController {
         tag = "Nodes",
         security = "bearerAuth"
     )]
-    #[resp(200, "Preview sync acknowledgment")]
+    #[body(json = PreviewSyncDto)]
+    #[resp(200, "Preview sync acknowledgment", json = PreviewSyncAck)]
     async fn sync_preview(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

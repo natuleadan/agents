@@ -38,7 +38,8 @@ impl TasksController {
         tag = "Tasks",
         security = "bearerAuth"
     )]
-    #[resp(200, "Enqueued task")]
+    #[body(json = SubmitTaskDto)]
+    #[resp(200, "Enqueued task", json = TaskEntity)]
     async fn submit(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -61,7 +62,7 @@ impl TasksController {
         tag = "Tasks",
         security = "bearerAuth"
     )]
-    #[resp(200, "Cursor-paginated tasks")]
+    #[resp(200, "Cursor-paginated tasks", json = CursorPage<TaskEntity>)]
     async fn list_for_session(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -84,7 +85,7 @@ impl TasksController {
         security = "bearerAuth"
     )]
     #[body(json = FollowUpDto)]
-    #[resp(200, "Queued follow-up")]
+    #[resp(200, "Queued follow-up", json = FollowUpMessage)]
     async fn follow_up(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -102,7 +103,7 @@ impl TasksController {
 
     #[get("/tasks/:id")]
     #[api(summary = "Get task by ID", tag = "Tasks", security = "bearerAuth")]
-    #[resp(200, "Task entity")]
+    #[resp(200, "Task entity", json = TaskEntity)]
     async fn get(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -120,7 +121,7 @@ impl TasksController {
         security = "bearerAuth"
     )]
     #[body(json = LeaseTaskDto)]
-    #[resp(200, "Granted task lease")]
+    #[resp(200, "Granted task lease", json = TaskLease)]
     #[resp(409, "Lease conflict")]
     async fn lease(
         &self,
@@ -140,7 +141,8 @@ impl TasksController {
         tag = "Tasks",
         security = "bearerAuth"
     )]
-    #[resp(200, "Updated task")]
+    #[body(json = UpdateTaskStateDto)]
+    #[resp(200, "Updated task", json = TaskEntity)]
     #[resp(409, "Fencing conflict")]
     async fn transition(
         &self,
@@ -160,7 +162,8 @@ impl TasksController {
         tag = "Tasks",
         security = "bearerAuth"
     )]
-    #[resp(200, "Completed task")]
+    #[body(json = CompleteTaskDto)]
+    #[resp(200, "Completed task", json = TaskEntity)]
     #[resp(409, "Fencing conflict")]
     async fn complete(
         &self,
@@ -181,7 +184,7 @@ impl TasksController {
         security = "bearerAuth"
     )]
     #[body(json = SteerTaskDto)]
-    #[resp(200, "Steering message queued")]
+    #[resp(200, "Steering message queued", json = SteeringMessage)]
     async fn steer(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -200,7 +203,7 @@ impl TasksController {
         tag = "Tasks",
         security = "bearerAuth"
     )]
-    #[resp(200, "Cancelled task")]
+    #[resp(200, "Cancelled task", json = TaskEntity)]
     async fn cancel(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

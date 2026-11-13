@@ -13,8 +13,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use ironic::{
-    AxumAdapter, OpenApiAxumApplication, OpenApiAxumExt, OpenApiConfig, ProviderDefinition,
-    SecurityScheme,
+    AxumAdapter, OpenApiAxumApplication, OpenApiAxumExt, ProviderDefinition,
     prelude::*,
     register_health_indicator,
     security::{
@@ -295,14 +294,7 @@ pub async fn build_application(
     let mcp_cell = Arc::clone(&lazy_mcp);
     let nodes_cell = Arc::clone(&lazy_nodes);
 
-    let openapi_config = OpenApiConfig::new("agents-server API", env!("CARGO_PKG_VERSION"))
-        .description("Distributed agent harness control plane built on Ironic")
-        .security_scheme(
-            "bearerAuth",
-            SecurityScheme::HttpBearer {
-                bearer_format: Some("JWT".to_owned()),
-            },
-        );
+    let openapi_config = crate::openapi::configure_openapi();
 
     let cors = CorsConfig::new().allowed_origins(infra.config.trusted_origins.clone());
     let global_ip_rate_max = infra.config.rate_limit_max_requests.saturating_mul(10);

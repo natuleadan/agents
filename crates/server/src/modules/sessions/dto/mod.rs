@@ -8,7 +8,7 @@ use serde::Deserialize;
 use crate::infra::error::ServerError;
 
 /// Request payload to create a new session.
-#[derive(Debug, Clone, Deserialize, Validate)]
+#[derive(Debug, Clone, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateSessionDto {
     #[garde(length(min = 1, max = 160))]
@@ -18,7 +18,7 @@ pub struct CreateSessionDto {
 }
 
 /// Request payload to update session title, interaction mode, or archive state.
-#[derive(Debug, Clone, Default, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateSessionDto {
     #[garde(length(min = 1, max = 160))]
@@ -32,7 +32,7 @@ pub struct UpdateSessionDto {
 }
 
 /// Query parameters for cursor-paginated session listing with tri-state `archived` filter.
-#[derive(Debug, Clone, Default, Deserialize, Validate)]
+#[derive(Debug, Clone, Default, Deserialize, Validate, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ListSessionsQuery {
     #[garde(length(max = 128))]

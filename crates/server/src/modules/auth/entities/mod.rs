@@ -1,6 +1,7 @@
 //! Authentication domain entities and authenticated actor extension.
 
 use agents_protocol::ApiKeyScope;
+use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
 
 /// Persisted user account authenticated via Argon2id password hash.
@@ -54,7 +55,7 @@ pub struct ApiKeyRecord {
 }
 
 /// Verified caller identity inserted into Ironic `RequestContext` by [`crate::modules::auth::guards::AuthGuard`].
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct AuthenticatedActor {
     pub user_id: String,

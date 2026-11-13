@@ -1,6 +1,7 @@
 //! Domain entities for node-based DAG workflows and crash-resumable workflow runs.
 
 use agents_protocol::{WorkflowDag, WorkflowEdge, WorkflowNode};
+use ironic::OpenApiSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
@@ -29,6 +30,31 @@ pub struct WorkflowEntity {
     pub updated_at: u64,
 }
 
+impl OpenApiSchema for WorkflowEntity {
+    fn openapi_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "WorkflowEntity",
+            "required": ["workflowId", "ownerId", "name", "nodes", "edges", "approved", "createdByAgent", "createdAt", "updatedAt"],
+            "properties": {
+                "workflowId": { "type": "string", "example": "wf_01j7dag001" },
+                "ownerId": { "type": "string", "example": "usr_01j7abc" },
+                "name": { "type": "string", "example": "Analysis & Publishing Pipeline" },
+                "nodes": { "type": "array", "items": WorkflowNode::openapi_schema() },
+                "edges": { "type": "array", "items": WorkflowEdge::openapi_schema() },
+                "webhookSlug": { "type": "string", "nullable": true, "example": "ingress-analysis" },
+                "renderSlug": { "type": "string", "nullable": true, "example": "view-analysis" },
+                "approved": { "type": "boolean", "example": true },
+                "approvedBy": { "type": "string", "nullable": true, "example": "admin-supervisor" },
+                "approvedAt": { "type": "integer", "nullable": true, "example": 1731513600 },
+                "createdByAgent": { "type": "boolean", "example": false },
+                "createdAt": { "type": "integer", "example": 1731513000 },
+                "updatedAt": { "type": "integer", "example": 1731513600 }
+            }
+        })
+    }
+}
+
 impl WorkflowEntity {
     #[must_use]
     pub fn to_dag(&self) -> WorkflowDag {
@@ -53,6 +79,17 @@ pub enum WorkflowRunStatus {
     Completed,
     Failed,
     Interrupted,
+}
+
+impl OpenApiSchema for WorkflowRunStatus {
+    fn openapi_schema() -> Value {
+        serde_json::json!({
+            "type": "string",
+            "title": "WorkflowRunStatus",
+            "enum": ["running", "completed", "failed", "interrupted"],
+            "example": "completed"
+        })
+    }
 }
 
 impl WorkflowRunStatus {
@@ -97,8 +134,31 @@ pub struct WorkflowRunEntity {
     pub completed_at: Option<u64>,
 }
 
+impl OpenApiSchema for WorkflowRunEntity {
+    fn openapi_schema() -> Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "WorkflowRunEntity",
+            "required": ["runId", "workflowId", "ownerId", "bootId", "status", "checkpointState", "resumedCount", "startedAt"],
+            "properties": {
+                "runId": { "type": "string", "example": "run_01j7xyz" },
+                "workflowId": { "type": "string", "example": "wf_01j7dag001" },
+                "scheduleId": { "type": "string", "nullable": true },
+                "ownerId": { "type": "string", "example": "usr_01j7abc" },
+                "bootId": { "type": "string", "example": "boot_123" },
+                "status": WorkflowRunStatus::openapi_schema(),
+                "currentNodeId": { "type": "string", "nullable": true, "example": "node_1" },
+                "checkpointState": { "type": "object", "example": { "step": 1 } },
+                "resumedCount": { "type": "integer", "example": 0 },
+                "startedAt": { "type": "integer", "example": 1731513600 },
+                "completedAt": { "type": "integer", "nullable": true, "example": 1731513605 }
+            }
+        })
+    }
+}
+
 /// Rendered HTML or dynamic payload served at `/render/:slug`.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, OpenApiSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct RenderedSlugEntity {
     pub slug: String,
