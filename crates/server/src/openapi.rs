@@ -65,6 +65,13 @@ pub fn configure_openapi() -> OpenApiConfig {
                 bearer_format: Some("JWT".to_owned()),
             },
         )
+        .security_scheme(
+            "apiKeyAuth",
+            SecurityScheme::ApiKey {
+                name: "X-API-Key".to_owned(),
+                location: "header".to_owned(),
+            },
+        )
         // Protocol schemas
         .schema::<ApiKeyScope>("ApiKeyScope")
         .schema::<TokenPair>("TokenPair")
@@ -139,6 +146,7 @@ pub fn configure_openapi() -> OpenApiConfig {
         .schema::<PutBlackboardDto>("PutBlackboardDto")
         .schema::<SwarmHandoffEntity>("SwarmHandoffEntity")
         .schema::<MediatedSwarmMessage>("MediatedSwarmMessage")
+        .schema::<crate::modules::swarm::dto::BlackboardEntryResponse>("BlackboardEntryResponse")
         // Node schemas
         .schema::<NodeHeartbeatDto>("NodeHeartbeatDto")
         .schema::<PreviewSyncDto>("PreviewSyncDto")
@@ -151,4 +159,6 @@ pub fn configure_openapi() -> OpenApiConfig {
         // Gateway & MCP schemas
         .schema::<McpPolicyInfo>("McpPolicyInfo")
         .schema::<StreamReplayQuery>("StreamReplayQuery")
+        // Standard error envelope
+        .schema::<crate::infra::error::ErrorResponse>("ErrorResponse")
 }

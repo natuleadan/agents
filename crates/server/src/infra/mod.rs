@@ -23,7 +23,7 @@ pub use config::{
 };
 pub use db::{BusHealthIndicator, Database, PostgresHealthIndicator, StateHealthIndicator};
 pub use doctor::{CheckStatus, DoctorItem, DoctorReport};
-pub use error::{ServerError, validate_dto};
+pub use error::{ErrorResponse, ServerError, validate_dto};
 pub use migrate::{
     ImportSummary, MigrationSnapshot, VerifyReport, export_snapshot, import_snapshot,
     validate_in_memory_audit_chain, verify_database,

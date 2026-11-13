@@ -6,7 +6,7 @@ use agents_protocol::ApiKeyScope;
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         audit::{
             dto::{AuditQueryDto, AuditVerificationReport},
@@ -36,7 +36,10 @@ impl AuditController {
         security = "bearerAuth"
     )]
     #[resp(200, "Audit log entries", json = Vec<AuditLogRecord>)]
-    #[resp(403, "Admin scope required")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Admin scope required", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -55,6 +58,9 @@ impl AuditController {
         security = "bearerAuth"
     )]
     #[resp(200, "Audit verification report", json = AuditVerificationReport)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Admin scope required", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn verify(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

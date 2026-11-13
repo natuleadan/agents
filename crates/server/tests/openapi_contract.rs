@@ -45,6 +45,49 @@ async fn openapi_spec_is_enriched_and_scalar_ui_renders_completely() {
         paths.len()
     );
 
+    // Verify that every domain operation documents request/response schemas for all its status codes
+    let mut checked_operations = 0;
+    for (path_name, path_item) in paths {
+        if !path_name.starts_with("/api/v1") && !path_name.starts_with("/webhooks") {
+            continue;
+        }
+        let Some(methods) = path_item.as_object() else {
+            continue;
+        };
+        for (method, op) in methods {
+            if !["get", "post", "put", "patch", "delete"].contains(&method.as_str()) {
+                continue;
+            }
+            checked_operations += 1;
+            let responses = op
+                .get("responses")
+                .and_then(Value::as_object)
+                .unwrap_or_else(|| {
+                    panic!("operation {method} {path_name} missing responses object")
+                });
+
+            for (status_code, resp_obj) in responses {
+                if status_code == "204" {
+                    continue;
+                }
+                let content = resp_obj.get("content").and_then(Value::as_object).unwrap_or_else(|| {
+                    panic!(
+                        "operation {method} {path_name} status {status_code} missing content schema:\n{}",
+                        serde_json::to_string_pretty(resp_obj).unwrap()
+                    )
+                });
+                assert!(
+                    content.contains_key("application/json"),
+                    "operation {method} {path_name} status {status_code} missing application/json schema"
+                );
+            }
+        }
+    }
+    assert!(
+        checked_operations >= 30,
+        "expected at least 30 checked operations, got {checked_operations}"
+    );
+
     let schemas = spec
         .get("components")
         .and_then(|c| c.get("schemas"))

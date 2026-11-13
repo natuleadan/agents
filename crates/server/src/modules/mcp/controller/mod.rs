@@ -14,15 +14,18 @@ use axum::{
 use ironic::prelude::*;
 use serde_json::{Value, json};
 
-use crate::modules::{
-    auth::{
-        entities::AuthenticatedActor,
-        guards::{AuthGuard, CurrentActor, extract_credential, require_scope},
-        services::AuthService,
-    },
-    mcp::{
-        dto::McpPolicyInfo,
-        services::{McpHostService, with_mcp_actor},
+use crate::{
+    infra::error::ErrorResponse,
+    modules::{
+        auth::{
+            entities::AuthenticatedActor,
+            guards::{AuthGuard, CurrentActor, extract_credential, require_scope},
+            services::AuthService,
+        },
+        mcp::{
+            dto::McpPolicyInfo,
+            services::{McpHostService, with_mcp_actor},
+        },
     },
 };
 
@@ -49,6 +52,9 @@ impl McpController {
         security = "bearerAuth"
     )]
     #[resp(200, "MCP tool allowlist policy", json = McpPolicyInfo)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn policy(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
