@@ -3,10 +3,11 @@
 use std::fmt;
 
 use argon2::password_hash::rand_core::{OsRng, RngCore};
+use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 /// Runtime environment profile controlling strict security validation.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum EnvironmentMode {
     #[default]
     Development,
@@ -31,7 +32,7 @@ impl EnvironmentMode {
 }
 
 /// Infrastructure operating mode separating sovereign local stacks from managed cloud stacks.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub enum InfrastructureMode {
     #[default]
     SelfHosted,
@@ -62,6 +63,8 @@ pub enum ConfigError {
     MissingDatabaseUrl,
     #[error("Managed cloud mode requires `{0}` to be configured")]
     MissingCloudRequirement(&'static str),
+    #[error("Conflicting topology configuration: {0}")]
+    MixedTopology(&'static str),
     #[error("Invalid numeric configuration value for `{0}`")]
     InvalidNumber(&'static str),
 }
@@ -227,6 +230,16 @@ impl ServerConfig {
             if qstash_url.is_none() {
                 return Err(ConfigError::MissingCloudRequirement("QSTASH_URL"));
             }
+            if env.is_production() && opt("NATS_URL").is_some() {
+                return Err(ConfigError::MixedTopology(
+                    "managed-cloud mode cannot run with sovereign NATS_URL in production",
+                ));
+            }
+        } else if env.is_production() && (opt("QSTASH_URL").is_some() && opt("NATS_URL").is_some())
+        {
+            return Err(ConfigError::MixedTopology(
+                "self-hosted mode cannot mix sovereign NATS_URL with cloud QSTASH_URL in production",
+            ));
         }
 
         let trusted_origins = env_or_local("AGENTS_TRUSTED_ORIGINS", "http://127.0.0.1:5173")
@@ -389,5 +402,17 @@ mod tests {
             _ => None,
         });
         assert!(valid.is_ok());
+
+        let mixed_cloud = ServerConfig::from_lookup(|k| match k {
+            "AGENTS_ENV" => Some("production".to_owned()),
+            "INFRASTRUCTURE_MODE" => Some("managed-cloud".to_owned()),
+            "AGENTS_JWT_SECRET" => Some("a-very-long-production-secret-over-32-bytes".to_owned()),
+            "DATABASE_URL" => Some("postgres://user:pass@ep-test.neon.tech/db".to_owned()),
+            "REDIS_URL" => Some("rediss://default:token@skunk.upstash.io:6379".to_owned()),
+            "QSTASH_URL" => Some("https://qstash.upstash.io".to_owned()),
+            "NATS_URL" => Some("nats://127.0.0.1:4222".to_owned()),
+            _ => None,
+        });
+        assert!(matches!(mixed_cloud, Err(ConfigError::MixedTopology(_))));
     }
 }
