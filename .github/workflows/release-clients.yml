@@ -51,6 +51,9 @@ jobs:
           targets: ${{ matrix.target }}
 
       - name: Build server and boxer release daemons
+        env:
+          GIT_SHA: ${{ github.sha }}
+          VERGEN_GIT_SHA: ${{ github.sha }}
         run: cargo build --release -p agents-server -p agents-boxer --target ${{ matrix.target }}
 
       - name: Package daemon tarball
