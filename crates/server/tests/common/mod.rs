@@ -13,8 +13,11 @@ use agents_server::{
     modules::{
         audit::repositories::{AuditRepository, AuditStore, InMemoryAuditRepository},
         auth::repositories::{AuthRepository, AuthStore, InMemoryAuthRepository},
+        autocron::repositories::{AutocronRepository, AutocronStore, InMemoryAutocronRepository},
         sessions::repositories::{InMemorySessionRepository, SessionStore},
+        swarm::repositories::{InMemorySwarmRepository, SwarmRepository, SwarmStore},
         tasks::repositories::{InMemoryTaskRepository, TaskRepository, TaskStore},
+        workflows::repositories::{InMemoryWorkflowRepository, WorkflowRepository, WorkflowStore},
     },
 };
 use axum::{
@@ -36,6 +39,8 @@ pub struct TestHarness {
     pub auth_repo: Arc<InMemoryAuthRepository>,
     pub audit_repo: Arc<InMemoryAuditRepository>,
     pub task_repo: Arc<InMemoryTaskRepository>,
+    pub workflow_repo: Arc<InMemoryWorkflowRepository>,
+    pub autocron_repo: Arc<InMemoryAutocronRepository>,
     pub admission: Arc<AdmissionController>,
 }
 
@@ -54,6 +59,9 @@ pub async fn build_test_harness_with_config(config: ServerConfig) -> TestHarness
     let session_repo = InMemorySessionRepository::new();
     let task_repo = InMemoryTaskRepository::new();
     let stream_repo = InMemoryStreamRepository::new();
+    let swarm_repo = InMemorySwarmRepository::new();
+    let workflow_repo = InMemoryWorkflowRepository::new();
+    let autocron_repo = InMemoryAutocronRepository::new();
 
     let infra = InfrastructureHandles {
         config: config.clone(),
@@ -66,6 +74,9 @@ pub async fn build_test_harness_with_config(config: ServerConfig) -> TestHarness
         session_store: SessionStore(session_repo),
         task_store: TaskStore(Arc::clone(&task_repo) as Arc<dyn TaskRepository>),
         stream_store: StreamStore(stream_repo),
+        swarm_store: SwarmStore(Arc::clone(&swarm_repo) as Arc<dyn SwarmRepository>),
+        workflow_store: WorkflowStore(Arc::clone(&workflow_repo) as Arc<dyn WorkflowRepository>),
+        autocron_store: AutocronStore(Arc::clone(&autocron_repo) as Arc<dyn AutocronRepository>),
     };
 
     let app = build_application(infra)
@@ -82,6 +93,8 @@ pub async fn build_test_harness_with_config(config: ServerConfig) -> TestHarness
         auth_repo,
         audit_repo,
         task_repo,
+        workflow_repo,
+        autocron_repo,
         admission,
     }
 }

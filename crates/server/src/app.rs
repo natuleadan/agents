@@ -46,6 +46,10 @@ use crate::{
             repositories::{AuthStore, InMemoryAuthRepository, PgAuthRepository},
             services::{AuthService, StateStore},
         },
+        autocron::{
+            AutocronModule,
+            repositories::{AutocronStore, InMemoryAutocronRepository, PgAutocronRepository},
+        },
         gateway::{
             GatewayModule,
             controller::{GatewayHttpState, gateway_lazy_router},
@@ -60,9 +64,17 @@ use crate::{
             SessionsModule,
             repositories::{InMemorySessionRepository, PgSessionRepository, SessionStore},
         },
+        swarm::{
+            SwarmModule,
+            repositories::{InMemorySwarmRepository, PgSwarmRepository, SwarmStore},
+        },
         tasks::{
             TasksModule,
             repositories::{InMemoryTaskRepository, PgTaskRepository, TaskStore},
+        },
+        workflows::{
+            WorkflowsModule,
+            repositories::{InMemoryWorkflowRepository, PgWorkflowRepository, WorkflowStore},
         },
     },
 };
@@ -82,6 +94,9 @@ impl Module for InfraModule {
             .provider(ProviderDefinition::value(SessionStore::default()))
             .provider(ProviderDefinition::value(TaskStore::default()))
             .provider(ProviderDefinition::value(StreamStore::default()))
+            .provider(ProviderDefinition::value(SwarmStore::default()))
+            .provider(ProviderDefinition::value(WorkflowStore::default()))
+            .provider(ProviderDefinition::value(AutocronStore::default()))
             .export::<ServerConfig>()
             .export::<StateStore>()
             .export::<BusClient>()
@@ -91,6 +106,9 @@ impl Module for InfraModule {
             .export::<SessionStore>()
             .export::<TaskStore>()
             .export::<StreamStore>()
+            .export::<SwarmStore>()
+            .export::<WorkflowStore>()
+            .export::<AutocronStore>()
             .build()
     }
 }
@@ -104,6 +122,9 @@ impl Module for InfraModule {
     AuthModule,
     SessionsModule,
     TasksModule,
+    SwarmModule,
+    WorkflowsModule,
+    AutocronModule,
     GatewayModule,
     McpModule,
 ])]
@@ -121,6 +142,9 @@ pub struct InfrastructureHandles {
     pub session_store: SessionStore,
     pub task_store: TaskStore,
     pub stream_store: StreamStore,
+    pub swarm_store: SwarmStore,
+    pub workflow_store: WorkflowStore,
+    pub autocron_store: AutocronStore,
 }
 
 impl InfrastructureHandles {
@@ -151,26 +175,40 @@ impl InfrastructureHandles {
         let admission =
             AdmissionController::new(config.max_concurrent_global, config.max_concurrent_session);
 
-        let (audit_store, auth_store, session_store, task_store, stream_store) =
-            match database.as_ref() {
-                Some(db) => {
-                    let pool = db.pool().clone();
-                    (
-                        AuditStore(PgAuditRepository::new(pool.clone())),
-                        AuthStore(PgAuthRepository::new(pool.clone())),
-                        SessionStore(PgSessionRepository::new(pool.clone())),
-                        TaskStore(PgTaskRepository::new(pool.clone())),
-                        StreamStore(PgStreamRepository::new(pool)),
-                    )
-                }
-                None => (
-                    AuditStore(InMemoryAuditRepository::new()),
-                    AuthStore(InMemoryAuthRepository::new()),
-                    SessionStore(InMemorySessionRepository::new()),
-                    TaskStore(InMemoryTaskRepository::new()),
-                    StreamStore(InMemoryStreamRepository::new()),
-                ),
-            };
+        let (
+            audit_store,
+            auth_store,
+            session_store,
+            task_store,
+            stream_store,
+            swarm_store,
+            workflow_store,
+            autocron_store,
+        ) = match database.as_ref() {
+            Some(db) => {
+                let pool = db.pool().clone();
+                (
+                    AuditStore(PgAuditRepository::new(pool.clone())),
+                    AuthStore(PgAuthRepository::new(pool.clone())),
+                    SessionStore(PgSessionRepository::new(pool.clone())),
+                    TaskStore(PgTaskRepository::new(pool.clone())),
+                    StreamStore(PgStreamRepository::new(pool.clone())),
+                    SwarmStore(PgSwarmRepository::new(pool.clone())),
+                    WorkflowStore(PgWorkflowRepository::new(pool.clone())),
+                    AutocronStore(PgAutocronRepository::new(pool)),
+                )
+            }
+            None => (
+                AuditStore(InMemoryAuditRepository::new()),
+                AuthStore(InMemoryAuthRepository::new()),
+                SessionStore(InMemorySessionRepository::new()),
+                TaskStore(InMemoryTaskRepository::new()),
+                StreamStore(InMemoryStreamRepository::new()),
+                SwarmStore(InMemorySwarmRepository::new()),
+                WorkflowStore(InMemoryWorkflowRepository::new()),
+                AutocronStore(InMemoryAutocronRepository::new()),
+            ),
+        };
 
         Ok(Self {
             config,
@@ -183,6 +221,9 @@ impl InfrastructureHandles {
             session_store,
             task_store,
             stream_store,
+            swarm_store,
+            workflow_store,
+            autocron_store,
         })
     }
 
@@ -204,6 +245,9 @@ impl InfrastructureHandles {
             session_store: SessionStore(InMemorySessionRepository::new()),
             task_store: TaskStore(InMemoryTaskRepository::new()),
             stream_store: StreamStore(InMemoryStreamRepository::new()),
+            swarm_store: SwarmStore(InMemorySwarmRepository::new()),
+            workflow_store: WorkflowStore(InMemoryWorkflowRepository::new()),
+            autocron_store: AutocronStore(InMemoryAutocronRepository::new()),
         }
     }
 }
@@ -254,6 +298,9 @@ pub async fn build_application(
         .override_provider(ProviderDefinition::value(infra.session_store))
         .override_provider(ProviderDefinition::value(infra.task_store))
         .override_provider(ProviderDefinition::value(infra.stream_store))
+        .override_provider(ProviderDefinition::value(infra.swarm_store))
+        .override_provider(ProviderDefinition::value(infra.workflow_store))
+        .override_provider(ProviderDefinition::value(infra.autocron_store))
         .middleware(SecurityHeadersMiddleware::new(
             SecurityHeadersConfig::default(),
         ))
