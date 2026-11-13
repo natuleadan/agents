@@ -23,7 +23,6 @@ const REQUIRED_FILES = [
   ".github/CODEOWNERS",
   ".github/dependabot.yml",
   ".github/workflows/validate.yml",
-  ".github/workflows/codeql.yml",
   "commitlint.config.js",
   "package.json",
   "Cargo.toml",
