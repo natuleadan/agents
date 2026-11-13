@@ -1,9 +1,9 @@
 [package]
 name = "agents-client"
-version = "0.0.0"
-edition = "2024"
+version.workspace = true
+edition.workspace = true
 description = "Multi-device client interface for interacting with the agents orchestrator"
-license = "Apache-2.0"
+license.workspace = true
 publish = false
 
 [dependencies]
