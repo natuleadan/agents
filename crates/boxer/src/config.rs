@@ -101,6 +101,12 @@ pub struct BoxerCli {
 
     #[arg(long, env = "TRAEFIK_DEFAULT_TTL_SECS", default_value_t = 900)]
     pub traefik_default_ttl_secs: u64,
+
+    #[arg(long, env = "UPSTASH_BOX_TOKEN")]
+    pub upstash_box_token: Option<String>,
+
+    #[arg(long, env = "DEEPINFRA_TOKEN")]
+    pub deepinfra_token: Option<String>,
 }
 
 /// Validated runtime configuration consumed by Boxer subsystems.
@@ -128,6 +134,8 @@ pub struct BoxerConfig {
     pub traefik_dynamic_dir: PathBuf,
     pub traefik_default_ttl_secs: u64,
     pub strict_native_isolation: bool,
+    pub upstash_box_token: Option<String>,
+    pub deepinfra_token: Option<String>,
 }
 
 impl BoxerConfig {
@@ -161,6 +169,13 @@ impl BoxerConfig {
             .map(|v| matches!(v.as_str(), "1" | "true" | "TRUE" | "yes"))
             .unwrap_or(false);
 
+        let upstash_box_token = cli
+            .upstash_box_token
+            .or_else(|| std::env::var("UPSTASH_BOX_TOKEN").ok());
+        let deepinfra_token = cli
+            .deepinfra_token
+            .or_else(|| std::env::var("DEEPINFRA_TOKEN").ok());
+
         let cfg = Self {
             node_id: cli.node_id,
             default_profile,
@@ -184,6 +199,8 @@ impl BoxerConfig {
             traefik_dynamic_dir: cli.traefik_dynamic_dir,
             traefik_default_ttl_secs: cli.traefik_default_ttl_secs,
             strict_native_isolation,
+            upstash_box_token,
+            deepinfra_token,
         };
         cfg.validate()?;
         Ok(cfg)

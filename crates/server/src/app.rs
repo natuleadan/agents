@@ -26,12 +26,16 @@ use tower::ServiceExt;
 
 use crate::{
     infra::{
+        adapters::{
+            BlobStoreClient, BlobStorePort, InfrastructureRegistry, VectorStoreClient,
+            VectorStorePort,
+        },
         admission::AdmissionController,
-        bus::{InMemoryMessageBus, MessageBus, NatsMessageBus},
+        bus::MessageBus,
         config::ServerConfig,
         db::{BusHealthIndicator, Database, PostgresHealthIndicator, StateHealthIndicator},
         error::ServerError,
-        state::{InMemoryStateBackend, StateBackend, ValkeyStateBackend},
+        state::StateBackend,
         stream::{
             AdmissionStore, BusClient, InMemoryStreamRepository, PgStreamRepository, StreamStore,
         },
@@ -91,6 +95,8 @@ impl Module for InfraModule {
             .provider(ProviderDefinition::value(ServerConfig::for_tests()))
             .provider(ProviderDefinition::value(StateStore::default()))
             .provider(ProviderDefinition::value(BusClient::default()))
+            .provider(ProviderDefinition::value(VectorStoreClient::default()))
+            .provider(ProviderDefinition::value(BlobStoreClient::default()))
             .provider(ProviderDefinition::value(AdmissionStore::default()))
             .provider(ProviderDefinition::value(AuditStore::default()))
             .provider(ProviderDefinition::value(AuthStore::default()))
@@ -104,6 +110,8 @@ impl Module for InfraModule {
             .export::<ServerConfig>()
             .export::<StateStore>()
             .export::<BusClient>()
+            .export::<VectorStoreClient>()
+            .export::<BlobStoreClient>()
             .export::<AdmissionStore>()
             .export::<AuditStore>()
             .export::<AuthStore>()
@@ -142,6 +150,8 @@ pub struct InfrastructureHandles {
     pub database: Option<Database>,
     pub state: Arc<dyn StateBackend>,
     pub bus: Arc<dyn MessageBus>,
+    pub vector: Arc<dyn VectorStorePort>,
+    pub blob: Arc<dyn BlobStorePort>,
     pub admission: Arc<AdmissionController>,
     pub audit_store: AuditStore,
     pub auth_store: AuthStore,
@@ -168,15 +178,11 @@ impl InfrastructureHandles {
             None => None,
         };
 
-        let state: Arc<dyn StateBackend> = match config.valkey_url.as_deref() {
-            Some(url) => ValkeyStateBackend::connect(url).await?,
-            None => InMemoryStateBackend::new(),
-        };
-
-        let bus: Arc<dyn MessageBus> = match config.nats_url.as_deref() {
-            Some(url) => NatsMessageBus::connect(url).await?,
-            None => InMemoryMessageBus::new(),
-        };
+        let registry = InfrastructureRegistry::from_config(&config).await?;
+        let state = Arc::clone(&registry.state);
+        let bus = Arc::clone(&registry.bus);
+        let vector = Arc::clone(&registry.vector);
+        let blob = Arc::clone(&registry.blob);
 
         let admission =
             AdmissionController::new(config.max_concurrent_global, config.max_concurrent_session);
@@ -221,6 +227,8 @@ impl InfrastructureHandles {
             database,
             state,
             bus,
+            vector,
+            blob,
             admission,
             audit_store,
             auth_store,
@@ -236,8 +244,11 @@ impl InfrastructureHandles {
     /// Creates isolated in-memory infrastructure handles for integration tests.
     #[must_use]
     pub fn in_memory(config: ServerConfig) -> Self {
-        let state = InMemoryStateBackend::new();
-        let bus = InMemoryMessageBus::new();
+        let registry = InfrastructureRegistry::in_memory();
+        let state = Arc::clone(&registry.state);
+        let bus = Arc::clone(&registry.bus);
+        let vector = Arc::clone(&registry.vector);
+        let blob = Arc::clone(&registry.blob);
         let admission =
             AdmissionController::new(config.max_concurrent_global, config.max_concurrent_session);
         Self {
@@ -245,6 +256,8 @@ impl InfrastructureHandles {
             database: None,
             state,
             bus,
+            vector,
+            blob,
             admission,
             audit_store: AuditStore(InMemoryAuditRepository::new()),
             auth_store: AuthStore(InMemoryAuthRepository::new()),
@@ -300,6 +313,8 @@ pub async fn build_application(
         .override_provider(ProviderDefinition::value(infra.config))
         .override_provider(ProviderDefinition::value(StateStore(infra.state)))
         .override_provider(ProviderDefinition::value(BusClient(infra.bus)))
+        .override_provider(ProviderDefinition::value(VectorStoreClient(infra.vector)))
+        .override_provider(ProviderDefinition::value(BlobStoreClient(infra.blob)))
         .override_provider(ProviderDefinition::value(AdmissionStore(infra.admission)))
         .override_provider(ProviderDefinition::value(infra.audit_store))
         .override_provider(ProviderDefinition::value(infra.auth_store))
