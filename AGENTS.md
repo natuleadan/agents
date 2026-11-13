@@ -14,12 +14,13 @@ Traefik ephemeral app previews, and multi-platform NSH clients.
 | Path | Purpose |
 |---|---|
 | `crates/protocol` | Shared wire contracts, named codecs, JSON-RPC, HTTP DTOs, frozen fixtures |
+| `crates/styles` | Reusable design tokens, component specs, and NSH layout primitives (`publish = false`) |
 | `crates/server` | Orchestrator daemon (`ironic` NestJS module tree, Postgres, Valkey, NATS, MCP, Autocron) |
 | `crates/boxer` | Sandbox supervisor daemon, `Runtime x Isolation` backends, Traefik route publisher, native loop |
 | `crates/installer` | VPS provisioning CLI orchestrating external `.sh` hardening scripts |
 | `crates/client` | `client-core`, `client-tui`, and multi-platform `nsh` GUI (`Server` & `Third-Party` modes) |
 | `deploy/scripts/` | Reusable POSIX/Bash VPS hardening and service bootstrap scripts (never hardcoded inside Rust) |
-| `tools/` | Release planning (`release-plan.ts`) |
+| `tools/` | Release planning (`release-plan.ts`) and notice generator (`third-party-notices.mjs`) |
 | `.github/` | CODEOWNERS, Dependabot, CI validation, and multi-platform release workflows |
 
 ## Development
@@ -40,6 +41,7 @@ pnpm validate
 - `cargo clippy --workspace --all-targets -- -D warnings` passes with zero warnings.
 - `cargo test --workspace` passes completely.
 - `node tools/release-plan.ts --check` matches `package.json` and `CHANGELOG.md`.
+- `node tools/third-party-notices.mjs --check` matches `ThirdPartyNotices.txt`.
 
 Repository hygiene rules (each `.rs`, `.ts`, and `.sh` file `<= 500` lines,
 `publish = false` on all workspace crates, no hardcoded paths or secrets) also

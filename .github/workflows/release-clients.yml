@@ -112,4 +112,6 @@ jobs:
           targets: ${{ matrix.rust_target }}
 
       - name: Verify client target check
-        run: cargo check -p agents-client --target ${{ matrix.rust_target }}
+        run: |
+          cargo check -p agents-styles --target ${{ matrix.rust_target }}
+          cargo check -p agents-client --target ${{ matrix.rust_target }}
