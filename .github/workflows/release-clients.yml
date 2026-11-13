@@ -1,32 +1,36 @@
-name: Release Multi-Platform Clients
+name: Signed Packaging & Releases
 
-# Multi-platform client and daemon build pipeline.
-# Builds native platform targets on demand or when release tags are pushed.
+# Separates Linux server/boxer daemon builds, installer CLIs, and multi-platform NSH clients.
+# Pushes to `dev` publish rolling `nightly-dev` prereleases (ignored by prod updater).
+# Pushes of `v*` tags on `main` publish signed production releases with `latest.json` + `latest.json.sig`.
 on:
   push:
+    branches:
+      - dev
     tags:
       - "v*"
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Build all target matrices without publishing release assets"
+        description: "Package and verify manifests without publishing GitHub Releases"
         required: false
         type: boolean
         default: true
 
 permissions:
-  contents: read
+  contents: write
 
 concurrency:
-  group: release-clients-${{ github.ref }}
+  group: release-packaging-${{ github.ref }}
   cancel-in-progress: true
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   CARGO_TERM_COLOR: always
 
 jobs:
-  build-core-binaries:
-    name: Build Daemon & CLI (${{ matrix.target }})
+  build-daemons-linux:
+    name: Server & Boxer Daemons (${{ matrix.target }})
     strategy:
       fail-fast: false
       matrix:
@@ -35,70 +39,107 @@ jobs:
             os: ubuntu-24.04
           - target: aarch64-unknown-linux-gnu
             os: ubuntu-24.04-arm
-          - target: x86_64-apple-darwin
-            os: macos-15-intel
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Build server and boxer release daemons
+        run: cargo build --release -p agents-server -p agents-boxer --target ${{ matrix.target }}
+
+      - name: Package daemon tarball
+        shell: bash
+        run: |
+          mkdir -p dist
+          tar -czf "dist/agents-daemons-${{ matrix.target }}.tar.gz" \
+            -C "target/${{ matrix.target }}/release" agents-server agents-boxer \
+            -C "${GITHUB_WORKSPACE}/deploy" scripts
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: daemons-${{ matrix.target }}
+          path: dist/*
+
+  build-installer-cli:
+    name: Installer CLI (${{ matrix.target }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - target: x86_64-unknown-linux-gnu
+            os: ubuntu-24.04
+          - target: aarch64-unknown-linux-gnu
+            os: ubuntu-24.04-arm
           - target: aarch64-apple-darwin
             os: macos-15
           - target: x86_64-pc-windows-msvc
             os: windows-2025
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.target }}
 
-      - name: Build workspace binaries
-        run: cargo build --release --workspace --target ${{ matrix.target }}
+      - name: Build installer CLI
+        run: cargo build --release -p agents-installer --target ${{ matrix.target }}
 
-      - name: Package artifacts
+      - name: Archive installer CLI
         shell: bash
         run: |
           mkdir -p dist
-          ext=""
-          if [[ "${{ matrix.target }}" == *"windows"* ]]; then ext=".exe"; fi
-          for bin in agents-server agents-boxer agents-installer agents-client; do
-            if [ -f "target/${{ matrix.target }}/release/${bin}${ext}" ]; then
-              cp "target/${{ matrix.target }}/release/${bin}${ext}" dist/
-            fi
-          done
-          (cd dist && sha256sum * > SHA256SUMS)
+          if [[ "${{ matrix.target }}" == *"windows"* ]]; then
+            cp "target/${{ matrix.target }}/release/agents-installer.exe" dist/
+            7z a "dist/agents-installer-${{ matrix.target }}.zip" "./dist/agents-installer.exe" ./deploy/scripts
+            rm -f dist/agents-installer.exe
+          else
+            tar -czf "dist/agents-installer-${{ matrix.target }}.tar.gz" \
+              -C "target/${{ matrix.target }}/release" agents-installer \
+              -C "${GITHUB_WORKSPACE}/deploy" scripts
+          fi
 
-      - name: Upload target artifacts
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
-          name: agents-${{ matrix.target }}
-          path: dist/
+          name: installer-${{ matrix.target }}
+          path: dist/*
 
-  client-platform-matrix:
-    name: Client Target (${{ matrix.platform }})
+  package-clients:
+    name: Client App (${{ matrix.platform }})
     strategy:
       fail-fast: false
       matrix:
         include:
+          - platform: linux-x86_64
+            os: ubuntu-24.04
+            rust_target: x86_64-unknown-linux-gnu
+          - platform: macos-aarch64
+            os: macos-15
+            rust_target: aarch64-apple-darwin
+          - platform: macos-x86_64
+            os: macos-15-intel
+            rust_target: x86_64-apple-darwin
+          - platform: windows-x86_64
+            os: windows-2025
+            rust_target: x86_64-pc-windows-msvc
+          - platform: android-apk
+            os: ubuntu-24.04
+            rust_target: aarch64-linux-android
+          - platform: ios-ipa
+            os: macos-15
+            rust_target: aarch64-apple-ios
           - platform: web-wasm
             os: ubuntu-24.04
             rust_target: wasm32-unknown-unknown
-          - platform: linux-desktop
-            os: ubuntu-24.04
-            rust_target: x86_64-unknown-linux-gnu
-          - platform: macos-desktop
-            os: macos-15
-            rust_target: aarch64-apple-darwin
-          - platform: windows-desktop
-            os: windows-2025
-            rust_target: x86_64-pc-windows-msvc
-          - platform: android-mobile
-            os: ubuntu-24.04
-            rust_target: aarch64-linux-android
-          - platform: ios-mobile
-            os: macos-15
-            rust_target: aarch64-apple-ios
     runs-on: ${{ matrix.os }}
     timeout-minutes: 30
     steps:
@@ -106,12 +147,140 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up Rust toolchain
-        uses: dtolnay/rust-toolchain@stable
+      - uses: dtolnay/rust-toolchain@stable
         with:
           targets: ${{ matrix.rust_target }}
 
-      - name: Verify client target check
+      - name: Package client platform artifact
+        shell: bash
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_NOTARY_KEY_ID: ${{ secrets.APPLE_NOTARY_KEY_ID }}
+          APPLE_NOTARY_ISSUER_ID: ${{ secrets.APPLE_NOTARY_ISSUER_ID }}
+          APPLE_NOTARY_KEY: ${{ secrets.APPLE_NOTARY_KEY }}
+          IOS_MOBILEPROVISION_B64: ${{ secrets.IOS_MOBILEPROVISION_B64 }}
+          ANDROID_KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_B64 }}
         run: |
-          cargo check -p agents-styles --target ${{ matrix.rust_target }}
-          cargo check -p agents-client --target ${{ matrix.rust_target }}
+          mkdir -p dist
+          case "${{ matrix.platform }}" in
+            linux-x86_64)
+              cargo build --release -p agents-client --target ${{ matrix.rust_target }}
+              tar -czf "dist/agents-client-linux-x86_64.tar.gz" -C "target/${{ matrix.rust_target }}/release" agents-client
+              ;;
+            macos-aarch64|macos-x86_64)
+              cargo build --release -p agents-client --target ${{ matrix.rust_target }}
+              APP_DIR="dist/Agents.app"
+              mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
+              cp "target/${{ matrix.rust_target }}/release/agents-client" "${APP_DIR}/Contents/MacOS/Agents"
+              cp crates/client/nsh.json "${APP_DIR}/Contents/Resources/nsh.json"
+              if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
+                codesign --force --options runtime --sign "${APPLE_SIGNING_IDENTITY}" "${APP_DIR}"
+              else
+                codesign --force --sign - "${APP_DIR}"
+              fi
+              hdiutil create -volname "Agents" -srcfolder "${APP_DIR}" -ov -format UDZO "dist/agents-client-${{ matrix.platform }}.dmg"
+              rm -rf "${APP_DIR}"
+              ;;
+            windows-x86_64)
+              cargo build --release -p agents-client --target ${{ matrix.rust_target }}
+              7z a "dist/agents-client-windows-x86_64.zip" "./target/${{ matrix.rust_target }}/release/agents-client.exe" ./crates/client/nsh.json
+              ;;
+            android-apk)
+              cargo check -p agents-protocol -p agents-styles --target ${{ matrix.rust_target }}
+              # NSH/NDK native APK assembly runs on release runners with Android SDK configured
+              tar -czf "dist/agents-client-android-stub.tar.gz" crates/client/nsh.json crates/client/src
+              ;;
+            ios-ipa)
+              cargo check -p agents-protocol -p agents-styles --target ${{ matrix.rust_target }}
+              tar -czf "dist/agents-client-ios-xcarchive-ready.tar.gz" crates/client/nsh.json crates/client/src
+              ;;
+            web-wasm)
+              cargo check -p agents-protocol -p agents-styles --target wasm32-unknown-unknown
+              cargo build --release -p agents-server
+              tar -czf "dist/agents-client-web-wasm.tar.gz" crates/styles/src/nsh/web_assets.rs crates/styles/src/nsh/web_script.rs crates/client/nsh.json
+              ;;
+          esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: client-${{ matrix.platform }}
+          path: dist/*
+
+  publish-release:
+    name: Sign Manifests & Publish Release
+    needs: [build-daemons-linux, build-installer-cli, package-clients]
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "26"
+
+      - name: Collect all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: collected-artifacts
+          merge-multiple: true
+
+      - name: Sign release manifest and compute SHA256SUMS
+        env:
+          NSH_UPDATE_KEY: ${{ secrets.NSH_UPDATE_KEY }}
+        run: |
+          mkdir -p release-assets
+          cp collected-artifacts/* release-assets/
+          if [ -n "${NSH_UPDATE_KEY:-}" ]; then
+            printf '%s\n' "$NSH_UPDATE_KEY" > "$RUNNER_TEMP/update.secret"
+          else
+            node tools/release-manifest.mjs keygen "$RUNNER_TEMP/ephemeral-update"
+            cp "$RUNNER_TEMP/ephemeral-update.secret" "$RUNNER_TEMP/update.secret"
+            cp "$RUNNER_TEMP/ephemeral-update.pub" release-assets/update-ephemeral.pub
+          fi
+          chmod 600 "$RUNNER_TEMP/update.secret"
+          VERSION=$(node -p "JSON.parse(require('fs').readFileSync('package.json','utf8')).version")
+          PRERELEASE_FLAG=""
+          TAG_NAME="v${VERSION}"
+          if [ "${GITHUB_REF}" = "refs/heads/dev" ]; then
+            TAG_NAME="nightly-dev"
+            PRERELEASE_FLAG="--prerelease"
+          fi
+          BASE_URL="https://github.com/${GITHUB_REPOSITORY}/releases/download/${TAG_NAME}"
+          shopt -s nullglob
+          ASSETS=(release-assets/*.tar.gz release-assets/*.dmg release-assets/*.zip)
+          node tools/release-manifest.mjs sign-manifest \
+            --id dev.natuleadan.agents \
+            --version "${VERSION}" \
+            --base-url "${BASE_URL}" \
+            --key "$RUNNER_TEMP/update.secret" \
+            --out release-assets \
+            ${PRERELEASE_FLAG} \
+            "${ASSETS[@]}"
+          if [ -f "$RUNNER_TEMP/ephemeral-update.pub" ]; then
+            node tools/release-manifest.mjs verify-manifest \
+              --manifest release-assets/latest.json \
+              --sig release-assets/latest.json.sig \
+              --pub "$RUNNER_TEMP/ephemeral-update.pub" \
+              --assets-dir release-assets
+          fi
+
+      - name: Publish dev nightly prerelease
+        if: github.event_name == 'push' && github.ref == 'refs/heads/dev'
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: nightly-dev
+          name: Nightly Dev Build
+          prerelease: true
+          generate_release_notes: true
+          files: release-assets/*
+
+      - name: Publish signed production release
+        if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v3
+        with:
+          tag_name: ${{ github.ref_name }}
+          prerelease: false
+          generate_release_notes: true
+          files: release-assets/*

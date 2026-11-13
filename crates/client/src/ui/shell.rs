@@ -267,6 +267,26 @@ impl ClientController {
         render_app_shell(&self.state, metrics)
     }
 
+    pub fn evaluate_release_manifest(
+        &mut self,
+        cfg: &crate::core::UpdaterConfig,
+        manifest_bytes: &[u8],
+        manifest_sig_b64: Option<&str>,
+    ) -> Result<Option<crate::core::AvailableUpdate>, crate::core::UpdateError> {
+        let found = crate::core::check_manifest(cfg, manifest_bytes, manifest_sig_b64)?;
+        if let Some(upd) = &found {
+            dispatch(
+                &mut self.state,
+                AppAction::SetUpdateInfo(crate::core::UpdateInfo {
+                    current_version: cfg.current_version.clone(),
+                    available_version: Some(upd.version.clone()),
+                    notes: upd.notes.clone(),
+                }),
+            );
+        }
+        Ok(found)
+    }
+
     fn access_token(&self) -> Result<String, ClientError> {
         if let Some(pair) = &self.tokens {
             return Ok(pair.access_token.clone());
