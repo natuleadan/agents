@@ -8,6 +8,7 @@ publish = false
 
 [dependencies]
 agents-protocol = { path = "../protocol" }
+agents-styles = { path = "../styles" }
 argon2 = "0.5"
 async-nats = "0.42"
 axum = { version = "0.8", features = ["ws"] }

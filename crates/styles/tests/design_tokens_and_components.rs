@@ -92,4 +92,44 @@ fn responsive_metrics_and_signal_html_projection_work() {
     let html = node.render_html_fragment();
     assert!(html.contains("&lt;safe&gt;"));
     assert_eq!(node.flatten_text_lines(), vec!["Count: 3 <safe>"]);
+
+    let css = Theme::default().to_css_stylesheet();
+    assert!(css.contains("--chart-1:"));
+    assert!(css.contains("--status-working:"));
+
+    let table = NshNode::table(
+        "workers-tbl",
+        &TableSpec {
+            caption: Some("Nodes".to_owned()),
+            columns: vec![TableColumnSpec {
+                key: "id".to_owned(),
+                heading: "ID".to_owned(),
+            }],
+            rows: vec![vec!["boxer-01".to_owned()]],
+        },
+        &Theme::default(),
+    );
+    assert!(table.render_html_fragment().contains("<table"));
+    assert!(table.render_html_fragment().contains("boxer-01"));
+
+    let chart = NshNode::chart(
+        "latency-chart",
+        "Latency",
+        vec![ChartSeriesSpec {
+            id: "ms".to_owned(),
+            label: "ms".to_owned(),
+            points: vec![10.0, 20.0, 15.0],
+            palette_index: 0,
+        }],
+        &Theme::default(),
+    );
+    let chart_html = chart.render_html_fragment();
+    assert!(chart_html.contains("<svg"));
+    assert!(chart_html.contains("<polyline"));
+
+    let root = NshNode::view("trace-root").child(table).child(chart);
+    let trace = root.collect_trace();
+    assert_eq!(trace.table_rows, 1);
+    assert_eq!(trace.chart_series, 1);
+    assert!(trace.duplicate_test_ids.is_empty());
 }

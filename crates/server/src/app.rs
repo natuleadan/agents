@@ -404,6 +404,7 @@ fn mount_native_stream_and_mcp_routes(
     nodes_cell: Arc<OnceLock<NodeHttpState>>,
 ) -> Router {
     router
+        .merge(crate::infra::webui::webui_router())
         .merge(gateway_lazy_router(gw_cell))
         .merge(traefik_lazy_router(nodes_cell))
         .route(

@@ -205,10 +205,12 @@ impl BadgeSpec {
 }
 
 /// Single-line text input descriptor with validation and focus awareness.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Default, Serialize, Deserialize)]
 pub struct InputSpec {
     pub placeholder: String,
     pub value: String,
+    pub masked: bool,
+    pub disabled: bool,
     pub state: InteractionState,
 }
 

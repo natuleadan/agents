@@ -34,9 +34,9 @@ pub use backend::{
     TaskSubmission, Transport,
 };
 pub use state::{
-    ActiveView, AppAction, AppState, AttachmentEntry, ContextMeter, DiffHunk, DiffLine,
-    DiffLineKind, NotificationCue, PreviewEntry, SubagentDrawerMessage, SwarmForkEntry,
-    ThinkingEntry, UpdateInfo, WorkerEntry, dispatch,
+    ActiveView, AppAction, AppState, AttachmentEntry, AuthState, ClusterNodeEntry, ContextMeter,
+    DiffHunk, DiffLine, DiffLineKind, LoginFormState, NotificationCue, PreviewEntry,
+    SubagentDrawerMessage, SwarmForkEntry, ThinkingEntry, UpdateInfo, WorkerEntry, dispatch,
 };
 pub use store::{
     ChunkCoalescer, CoalesceOutcome, DraftRecord, DraftStore, IdempotentActionQueue,
