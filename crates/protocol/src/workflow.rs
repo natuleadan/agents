@@ -71,6 +71,14 @@ pub struct WorkflowDag {
     pub name: String,
     pub nodes: Vec<WorkflowNode>,
     pub edges: Vec<WorkflowEdge>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub webhook_slug: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub render_slug: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub approved: Option<bool>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by_agent: Option<bool>,
 }
 
 /// Persistent Autocron schedule specification with timezone and budget guards.

@@ -8,7 +8,7 @@ pub mod services;
 
 use ironic::prelude::*;
 
-pub use controller::WorkflowsController;
+pub use controller::{SlugRenderController, WebhookIngressController, WorkflowsController};
 pub use repositories::{
     InMemoryWorkflowRepository, PgWorkflowRepository, WorkflowRepository, WorkflowStore,
 };
@@ -18,7 +18,7 @@ pub use services::{WorkflowService, evaluate_edge_condition, validate_dag_topolo
 #[module(
     imports = [crate::app::InfraModule, crate::modules::audit::AuditModule],
     providers = [WorkflowService],
-    controllers = [WorkflowsController],
+    controllers = [WorkflowsController, WebhookIngressController, SlugRenderController],
     exports = [WorkflowService],
 )]
 pub struct WorkflowsModule;

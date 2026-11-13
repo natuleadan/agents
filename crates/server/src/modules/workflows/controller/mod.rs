@@ -1,9 +1,13 @@
 //! Thin Ironic HTTP controller for node-based DAG workflows and checkpoint runs.
 
+pub mod ingress;
+
 use std::sync::Arc;
 
 use agents_protocol::ApiKeyScope;
 use ironic::prelude::*;
+
+pub use ingress::{SlugRenderController, WebhookIngressController};
 
 use crate::{
     infra::error::validate_dto,
@@ -13,8 +17,10 @@ use crate::{
             guards::{AuthGuard, CurrentActor, require_scope},
         },
         workflows::{
-            dto::{CreateWorkflowDto, TriggerWorkflowDto},
-            entities::{WorkflowEntity, WorkflowRunEntity},
+            dto::{
+                ApproveWorkflowDto, CreateWorkflowDto, PublishRenderSlugDto, TriggerWorkflowDto,
+            },
+            entities::{RenderedSlugEntity, WorkflowEntity, WorkflowRunEntity},
             services::WorkflowService,
         },
     },
@@ -61,6 +67,47 @@ impl WorkflowsController {
         require_scope(&actor, ApiKeyScope::Read)?;
         let list = self.service.list_owned(&actor).await?;
         Ok(Json(list))
+    }
+
+    #[post("/:workflow_id/approve")]
+    #[api(
+        summary = "Approve an automated workflow DAG (OWASP ASI-02/ASI-08)",
+        tag = "Workflows",
+        security = "bearerAuth"
+    )]
+    #[resp(200, "Approved workflow")]
+    async fn approve(
+        &self,
+        #[decorator(CurrentActor)] actor: AuthenticatedActor,
+        #[param] workflow_id: String,
+        #[body] dto: Option<ApproveWorkflowDto>,
+    ) -> Result<Json<WorkflowEntity>, HttpError> {
+        let _ = dto;
+        require_scope(&actor, ApiKeyScope::Write)?;
+        let wf = self.service.approve(&actor, &workflow_id).await?;
+        Ok(Json(wf))
+    }
+
+    #[post("/:workflow_id/render")]
+    #[api(
+        summary = "Publish rendered HTML content to workflow render slug",
+        tag = "Workflows",
+        security = "bearerAuth"
+    )]
+    #[resp(200, "Rendered slug entity")]
+    async fn publish_render(
+        &self,
+        #[decorator(CurrentActor)] actor: AuthenticatedActor,
+        #[param] workflow_id: String,
+        #[body] dto: PublishRenderSlugDto,
+    ) -> Result<Json<RenderedSlugEntity>, HttpError> {
+        validate_dto(&dto)?;
+        require_scope(&actor, ApiKeyScope::Write)?;
+        let res = self
+            .service
+            .publish_render(&actor, &workflow_id, &dto)
+            .await?;
+        Ok(Json(res))
     }
 
     #[post("/:workflow_id/trigger")]
