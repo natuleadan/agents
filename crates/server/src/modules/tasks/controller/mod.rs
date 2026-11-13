@@ -6,7 +6,7 @@ use agents_protocol::{ApiKeyScope, CursorPage, FollowUpMessage, SteeringMessage,
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -40,6 +40,11 @@ impl TasksController {
     )]
     #[body(json = SubmitTaskDto)]
     #[resp(200, "Enqueued task", json = TaskEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn submit(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -63,6 +68,11 @@ impl TasksController {
         security = "bearerAuth"
     )]
     #[resp(200, "Cursor-paginated tasks", json = CursorPage<TaskEntity>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list_for_session(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -86,6 +96,11 @@ impl TasksController {
     )]
     #[body(json = FollowUpDto)]
     #[resp(200, "Queued follow-up", json = FollowUpMessage)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn follow_up(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -104,6 +119,10 @@ impl TasksController {
     #[get("/tasks/:id")]
     #[api(summary = "Get task by ID", tag = "Tasks", security = "bearerAuth")]
     #[resp(200, "Task entity", json = TaskEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Task not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn get(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -122,7 +141,12 @@ impl TasksController {
     )]
     #[body(json = LeaseTaskDto)]
     #[resp(200, "Granted task lease", json = TaskLease)]
-    #[resp(409, "Lease conflict")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Task not found", json = ErrorResponse)]
+    #[resp(409, "Lease conflict", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn lease(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -143,7 +167,12 @@ impl TasksController {
     )]
     #[body(json = UpdateTaskStateDto)]
     #[resp(200, "Updated task", json = TaskEntity)]
-    #[resp(409, "Fencing conflict")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Task not found", json = ErrorResponse)]
+    #[resp(409, "Fencing conflict", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn transition(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -164,7 +193,12 @@ impl TasksController {
     )]
     #[body(json = CompleteTaskDto)]
     #[resp(200, "Completed task", json = TaskEntity)]
-    #[resp(409, "Fencing conflict")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Task not found", json = ErrorResponse)]
+    #[resp(409, "Fencing conflict", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn complete(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -185,6 +219,11 @@ impl TasksController {
     )]
     #[body(json = SteerTaskDto)]
     #[resp(200, "Steering message queued", json = SteeringMessage)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Task not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn steer(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -204,6 +243,10 @@ impl TasksController {
         security = "bearerAuth"
     )]
     #[resp(200, "Cancelled task", json = TaskEntity)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Task not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn cancel(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

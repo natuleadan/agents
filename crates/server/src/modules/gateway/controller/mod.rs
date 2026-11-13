@@ -23,7 +23,7 @@ use futures_util::{SinkExt, StreamExt};
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -60,6 +60,11 @@ impl GatewayController {
         security = "bearerAuth"
     )]
     #[resp(200, "Ordered stream envelopes", json = Vec<EventEnvelope>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn replay(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,

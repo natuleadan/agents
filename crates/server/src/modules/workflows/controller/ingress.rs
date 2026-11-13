@@ -4,8 +4,11 @@ use std::sync::Arc;
 
 use ironic::{HeaderName, HeaderValue, HttpStatus, prelude::*};
 
-use crate::modules::workflows::{
-    dto::WebhookPayloadDto, entities::WorkflowRunEntity, services::WorkflowService,
+use crate::{
+    infra::error::ErrorResponse,
+    modules::workflows::{
+        dto::WebhookPayloadDto, entities::WorkflowRunEntity, services::WorkflowService,
+    },
 };
 
 /// Public webhook trigger controller for dynamic `/webhooks/:slug` ingress.
@@ -24,6 +27,9 @@ impl WebhookIngressController {
     )]
     #[body(json = WebhookPayloadDto)]
     #[resp(200, "Workflow run triggered by webhook", json = WorkflowRunEntity)]
+    #[resp(404, "Slug not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn trigger_slug(
         &self,
         #[param] slug: String,
@@ -52,6 +58,8 @@ impl SlugRenderController {
         tag = "Workflows"
     )]
     #[resp(200, "Rendered HTML content")]
+    #[resp(404, "Render slug not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn render_slug(&self, #[param] slug: String) -> Result<Response, HttpError> {
         let rendered = self.service.get_render(&slug).await?;
         let mut resp = Response::bytes(HttpStatus::OK, rendered.content.into_bytes());

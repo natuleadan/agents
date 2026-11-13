@@ -5,17 +5,18 @@ use std::sync::Arc;
 
 use agents_protocol::ApiKeyScope;
 use ironic::prelude::*;
-use serde_json::{Value, json};
 
 use crate::{
-    infra::error::validate_dto,
+    infra::error::{ErrorResponse, validate_dto},
     modules::{
         auth::{
             entities::AuthenticatedActor,
             guards::{AuthGuard, CurrentActor, require_scope},
         },
         swarm::{
-            dto::{CreateHandoffDto, PutBlackboardDto, SendSwarmMessageDto},
+            dto::{
+                BlackboardEntryResponse, CreateHandoffDto, PutBlackboardDto, SendSwarmMessageDto,
+            },
             entities::{MediatedSwarmMessage, SwarmHandoffEntity},
             services::SwarmService,
         },
@@ -39,7 +40,11 @@ impl SwarmController {
     )]
     #[body(json = CreateHandoffDto)]
     #[resp(200, "Created subagent handoff", json = SwarmHandoffEntity)]
-    #[resp(403, "Permission escalation rejected")]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Permission escalation rejected", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn create_handoff(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -62,6 +67,10 @@ impl SwarmController {
         security = "bearerAuth"
     )]
     #[resp(200, "Swarm handoffs", json = Vec<SwarmHandoffEntity>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list_handoffs(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -80,6 +89,11 @@ impl SwarmController {
     )]
     #[body(json = SendSwarmMessageDto)]
     #[resp(200, "Dispatched swarm message", json = MediatedSwarmMessage)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn send_message(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -99,6 +113,10 @@ impl SwarmController {
         security = "bearerAuth"
     )]
     #[resp(200, "Swarm messages", json = Vec<MediatedSwarmMessage>)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list_messages(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
@@ -116,20 +134,28 @@ impl SwarmController {
         security = "bearerAuth"
     )]
     #[body(json = PutBlackboardDto)]
-    #[resp(200, "Stored blackboard value")]
+    #[resp(200, "Stored blackboard value", json = BlackboardEntryResponse)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Session not found", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn put_blackboard(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
         #[param] session_id: String,
         #[body] dto: PutBlackboardDto,
-    ) -> Result<Json<Value>, HttpError> {
+    ) -> Result<Json<BlackboardEntryResponse>, HttpError> {
         validate_dto(&dto)?;
         require_scope(&actor, ApiKeyScope::Write)?;
         let val = self
             .service
             .put_blackboard(&actor, &session_id, &dto)
             .await?;
-        Ok(Json(json!({ "key": dto.key, "value": val })))
+        Ok(Json(BlackboardEntryResponse {
+            key: dto.key,
+            value: val,
+        }))
     }
 
     #[get("/:session_id/swarm/blackboard/:key")]
@@ -138,18 +164,23 @@ impl SwarmController {
         tag = "Swarm",
         security = "bearerAuth"
     )]
-    #[resp(200, "Blackboard entry")]
+    #[resp(200, "Blackboard entry", json = BlackboardEntryResponse)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(404, "Blackboard entry not found", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn get_blackboard(
         &self,
         #[decorator(CurrentActor)] actor: AuthenticatedActor,
         #[param] session_id: String,
         #[param] key: String,
-    ) -> Result<Json<Value>, HttpError> {
+    ) -> Result<Json<BlackboardEntryResponse>, HttpError> {
         require_scope(&actor, ApiKeyScope::Read)?;
         let val = self
             .service
             .get_blackboard(&actor, &session_id, &key)
-            .await?;
-        Ok(Json(json!({ "key": key, "value": val })))
+            .await?
+            .ok_or_else(|| HttpError::not_found("NOT_FOUND", "blackboard key not found"))?;
+        Ok(Json(BlackboardEntryResponse { key, value: val }))
     }
 }

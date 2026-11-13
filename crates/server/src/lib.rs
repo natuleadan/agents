@@ -9,7 +9,8 @@ pub mod openapi;
 
 pub use app::{AppModule, InfraModule, InfrastructureHandles, build_application};
 pub use infra::{
-    CheckStatus, ConfigError, DoctorReport, EnvironmentMode, InfrastructureMode, MigrationSnapshot,
-    ServerConfig, ServerError, export_snapshot, import_snapshot, verify_database,
+    CheckStatus, ConfigError, DoctorReport, EnvironmentMode, ErrorResponse, InfrastructureMode,
+    MigrationSnapshot, ServerConfig, ServerError, export_snapshot, import_snapshot,
+    verify_database,
 };
 pub use openapi::configure_openapi;
