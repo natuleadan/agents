@@ -14,7 +14,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, require_scope},
         },
         workflows::{
             dto::{
@@ -36,6 +36,7 @@ pub struct WorkflowsController {
 #[routes]
 impl WorkflowsController {
     #[post("/")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Create an automated workflow DAG",
         tag = "Workflows",
@@ -59,6 +60,7 @@ impl WorkflowsController {
     }
 
     #[get("/")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List owned workflows",
         tag = "Workflows",
@@ -78,6 +80,7 @@ impl WorkflowsController {
     }
 
     #[post("/:workflow_id/approve")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Approve an automated workflow DAG (OWASP ASI-02/ASI-08)",
         tag = "Workflows",
@@ -102,6 +105,7 @@ impl WorkflowsController {
     }
 
     #[post("/:workflow_id/render")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Publish rendered HTML content to workflow render slug",
         tag = "Workflows",
@@ -130,6 +134,7 @@ impl WorkflowsController {
     }
 
     #[post("/:workflow_id/trigger")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Execute workflow DAG manually",
         tag = "Workflows",
@@ -164,6 +169,7 @@ impl WorkflowsController {
     }
 
     #[get("/runs/:run_id")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "Inspect workflow run checkpoint",
         tag = "Workflows",

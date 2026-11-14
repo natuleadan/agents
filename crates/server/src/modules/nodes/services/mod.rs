@@ -127,7 +127,7 @@ impl NodeRegistryService {
             runtime: dto.runtime.clone(),
             isolation: dto.isolation.clone(),
             max_concurrent_boxes: dto.max_concurrent_boxes,
-            active_boxes: 0,
+            active_boxes: dto.active_boxes,
             status: agents_protocol::NodeStatus::Online,
             last_heartbeat_ms: current_time,
             ttl_seconds: 60,

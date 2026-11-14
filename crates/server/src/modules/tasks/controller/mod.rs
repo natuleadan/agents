@@ -10,7 +10,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, OptionalIdempotencyKey, require_scope},
+            guards::{AuthGuard, CurrentActor, OptionalIdempotencyKey, ScopeGuard, require_scope},
         },
         tasks::{
             dto::{
@@ -33,6 +33,7 @@ pub struct TasksController {
 #[routes]
 impl TasksController {
     #[post("/sessions/:session_id/tasks")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Enqueue a task in a session",
         tag = "Tasks",
@@ -62,6 +63,7 @@ impl TasksController {
     }
 
     #[get("/sessions/:session_id/tasks")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List tasks for a session",
         tag = "Tasks",
@@ -89,6 +91,7 @@ impl TasksController {
     }
 
     #[post("/sessions/:session_id/follow-ups")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Queue a follow-up prompt for outer loop",
         tag = "Tasks",
@@ -117,6 +120,7 @@ impl TasksController {
     }
 
     #[get("/tasks/:id")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(summary = "Get task by ID", tag = "Tasks", security = "bearerAuth")]
     #[resp(200, "Task entity", json = TaskEntity)]
     #[resp(401, "Unauthorized", json = ErrorResponse)]
@@ -134,6 +138,7 @@ impl TasksController {
     }
 
     #[post("/tasks/:id/lease")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Acquire a fenced worker lease",
         tag = "Tasks",
@@ -160,6 +165,7 @@ impl TasksController {
     }
 
     #[post("/tasks/:id/state")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Advance fenced task state",
         tag = "Tasks",
@@ -186,6 +192,7 @@ impl TasksController {
     }
 
     #[post("/tasks/:id/complete")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Complete fenced task execution",
         tag = "Tasks",
@@ -212,6 +219,7 @@ impl TasksController {
     }
 
     #[post("/tasks/:id/steer")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Inject live steering message",
         tag = "Tasks",
@@ -237,6 +245,7 @@ impl TasksController {
     }
 
     #[post("/tasks/:id/cancel")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Cancel active or queued task",
         tag = "Tasks",

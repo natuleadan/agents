@@ -27,7 +27,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, extract_credential, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, extract_credential, require_scope},
             services::AuthService,
         },
         gateway::{
@@ -54,6 +54,7 @@ pub struct GatewayController {
 #[routes]
 impl GatewayController {
     #[get("/:id/events")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "Replay ordered session stream events",
         tag = "Gateway",

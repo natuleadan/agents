@@ -6,7 +6,7 @@ use std::{
 };
 
 use ironic::{
-    AxumAdapter, OpenApiAxumApplication, OpenApiAxumExt, ProviderDefinition,
+    AxumAdapter, LifecycleDefinition, OpenApiAxumApplication, OpenApiAxumExt, ProviderDefinition,
     prelude::*,
     register_health_indicator,
     security::{
@@ -41,6 +41,7 @@ use crate::{
         },
         auth::{
             AuthModule,
+            guards::{AgentCircuitBreaker, AgentCircuitBreakerMiddleware, SecurityLifecycleHook},
             repositories::{AuthStore, InMemoryAuthRepository, PgAuthRepository},
             services::{AuthService, StateStore},
         },
@@ -75,10 +76,15 @@ pub struct InfraModule;
 
 impl Module for InfraModule {
     fn definition() -> ModuleDefinition {
+        let events = AppEventBus::default();
+        let circuit_breaker = AgentCircuitBreaker::default();
+        let security_hook = SecurityLifecycleHook::new(Arc::new(events.clone()));
         ModuleDefinition::builder::<Self>()
             .provider(ProviderDefinition::value(ServerConfig::for_tests()))
             .provider(ProviderDefinition::value(AppCache::default()))
-            .provider(ProviderDefinition::value(AppEventBus::default()))
+            .provider(ProviderDefinition::value(events))
+            .provider(ProviderDefinition::value(circuit_breaker))
+            .provider(ProviderDefinition::value(security_hook))
             .provider(ProviderDefinition::value(StateStore::default()))
             .provider(ProviderDefinition::value(BusClient::default()))
             .provider(ProviderDefinition::value(VectorStoreClient::default()))
@@ -96,6 +102,8 @@ impl Module for InfraModule {
             .export::<ServerConfig>()
             .export::<AppCache>()
             .export::<AppEventBus>()
+            .export::<AgentCircuitBreaker>()
+            .export::<SecurityLifecycleHook>()
             .export::<StateStore>()
             .export::<BusClient>()
             .export::<VectorStoreClient>()
@@ -110,6 +118,12 @@ impl Module for InfraModule {
             .export::<SwarmStore>()
             .export::<WorkflowStore>()
             .export::<AutocronStore>()
+            .lifecycle(
+                LifecycleDefinition::builder::<SecurityLifecycleHook>()
+                    .guard_denied()
+                    .on_error()
+                    .build(),
+            )
             .build()
     }
 }
@@ -332,9 +346,16 @@ pub async fn build_application(
                 .to_owned()
         }));
 
+    let event_bus = AppEventBus::new();
+    let circuit_breaker = AgentCircuitBreaker::new();
+    let security_hook = SecurityLifecycleHook::new(Arc::new(event_bus.clone()));
+
     let app = Application::builder()
         .module(AppModule::definition())
         .override_provider(ProviderDefinition::value(infra.config))
+        .override_provider(ProviderDefinition::value(event_bus))
+        .override_provider(ProviderDefinition::value(circuit_breaker.clone()))
+        .override_provider(ProviderDefinition::value(security_hook.clone()))
         .override_provider(ProviderDefinition::value(StateStore(infra.state)))
         .override_provider(ProviderDefinition::value(BusClient(infra.bus)))
         .override_provider(ProviderDefinition::value(VectorStoreClient(infra.vector)))
@@ -351,12 +372,17 @@ pub async fn build_application(
         .middleware(SecurityHeadersMiddleware::new(
             SecurityHeadersConfig::default(),
         ))
+        .middleware(AgentCircuitBreakerMiddleware::new(
+            circuit_breaker,
+            security_hook,
+        ))
         .middleware(rate_limiter)
         .middleware(CorsMiddleware::new(cors))
         .platform(
             AxumAdapter::new()
                 .compression()
                 .max_connections(10_000)
+                .max_concurrent_requests(5_000)
                 .request_body_limit(4 * 1024 * 1024)
                 .request_timeout(Duration::from_secs(30))
                 .configure_router(move |router| {
@@ -426,6 +452,6 @@ pub async fn build_application(
     Ok(app)
 }
 
-pub use crate::infra::workers::start_retention_worker;
+pub use crate::infra::workers::{start_autocron_worker, start_retention_worker};
 
 pub use crate::infra::webui::mount_native_stream_and_mcp_routes;

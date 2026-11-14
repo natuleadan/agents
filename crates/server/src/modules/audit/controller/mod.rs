@@ -15,7 +15,7 @@ use crate::{
         },
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, require_scope},
         },
     },
 };
@@ -30,6 +30,7 @@ pub struct AuditController {
 #[routes]
 impl AuditController {
     #[get]
+    #[guard(ScopeGuard::new(ApiKeyScope::Admin))]
     #[api(
         summary = "List audit log entries",
         tag = "Audit",
@@ -52,6 +53,7 @@ impl AuditController {
     }
 
     #[get("/verify")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Admin))]
     #[api(
         summary = "Verify audit hash chain integrity",
         tag = "Audit",

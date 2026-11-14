@@ -3,11 +3,42 @@
 use std::{sync::Arc, time::Duration};
 
 use ironic::services::scheduling::{ScheduledTask, interval};
-use tracing::debug;
+use sha2::{Digest, Sha256};
+use tracing::{debug, warn};
 
-use crate::{config::BoxerConfig, control_plane::service::BoxerControlPlaneService};
+use crate::{
+    config::{BoxerConfig, now_ms},
+    control_plane::service::BoxerControlPlaneService,
+};
 
-/// Spawns an Ironic-native periodic task that announces Boxer capacity and node status to agents-server.
+fn compute_hmac_hex(key: &[u8], msg: &[u8]) -> String {
+    const BLOCK_SIZE: usize = 64;
+    let mut k_block = [0u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        let hashed = Sha256::digest(key);
+        k_block[..32].copy_from_slice(&hashed);
+    } else {
+        k_block[..key.len()].copy_from_slice(key);
+    }
+    let mut o_pad = [0x5cu8; BLOCK_SIZE];
+    let mut i_pad = [0x36u8; BLOCK_SIZE];
+    for i in 0..BLOCK_SIZE {
+        o_pad[i] ^= k_block[i];
+        i_pad[i] ^= k_block[i];
+    }
+    let mut inner = Sha256::new();
+    inner.update(i_pad);
+    inner.update(msg);
+    let inner_hash = inner.finalize();
+
+    let mut outer = Sha256::new();
+    outer.update(o_pad);
+    outer.update(inner_hash);
+    hex::encode(outer.finalize())
+}
+
+/// Spawns an Ironic-native periodic task that announces Boxer capacity and node status to agents-server
+/// via HMAC-SHA256 signed `POST /api/v1/nodes/register`.
 pub fn start_autodiscovery_heartbeat(
     config: Arc<BoxerConfig>,
     service: Arc<BoxerControlPlaneService>,
@@ -25,38 +56,54 @@ pub fn start_autodiscovery_heartbeat(
 
         async move {
             let health = svc.health().await;
-            let heartbeat_url = format!("{}/api/v1/nodes/heartbeat", cfg.server_internal_url);
+            let register_url = format!("{}/api/v1/nodes/register", cfg.server_internal_url);
+            let node_ip = "127.0.0.1";
+            let timestamp_ms = now_ms();
+            let sign_payload =
+                format!("{}:{node_ip}:{}:{timestamp_ms}", cfg.node_id, cfg.http_port);
+            let signature =
+                compute_hmac_hex(cfg.cluster_secret.as_bytes(), sign_payload.as_bytes());
 
             let payload = serde_json::json!({
                 "nodeId": cfg.node_id,
-                "vlanIp": "127.0.0.1",
-                "httpPort": cfg.http_port,
-                "capacityBoxes": cfg.max_concurrent_boxes as u32,
-                "activeBoxes": health.active_boxes as u32,
-                "capabilities": ["docker", "openshell", "vfs"],
-                "status": "active"
+                "nodeIp": node_ip,
+                "port": cfg.http_port,
+                "runtime": cfg.default_profile.runtime,
+                "isolation": cfg.default_profile.isolation,
+                "maxConcurrentBoxes": cfg.max_concurrent_boxes,
+                "activeBoxes": health.active_boxes,
+                "timestampMs": timestamp_ms,
+                "signature": signature,
             });
 
             match http
-                .post(&heartbeat_url)
-                .header("Authorization", format!("Bearer {}", cfg.worker_token))
+                .post(&register_url)
                 .header("Content-Type", "application/json")
                 .json(&payload)
                 .send()
                 .await
             {
                 Ok(resp) if resp.status().is_success() => {
-                    debug!("node heartbeat acknowledged by server: {}", cfg.node_id);
+                    debug!(
+                        node_id = %cfg.node_id,
+                        status = %resp.status(),
+                        active_boxes = health.active_boxes,
+                        "sent signed Boxer node registration heartbeat"
+                    );
                 }
                 Ok(resp) => {
-                    debug!(
-                        "node heartbeat returned non-200: {} ({})",
-                        resp.status(),
-                        cfg.node_id
+                    warn!(
+                        node_id = %cfg.node_id,
+                        status = %resp.status(),
+                        "Boxer signed registration heartbeat rejected by agents-server"
                     );
                 }
                 Err(err) => {
-                    debug!("failed to send node heartbeat to {}: {err}", heartbeat_url);
+                    debug!(
+                        node_id = %cfg.node_id,
+                        error = %err,
+                        "autodiscovery heartbeat could not reach agents-server (retrying next tick)"
+                    );
                 }
             }
         }

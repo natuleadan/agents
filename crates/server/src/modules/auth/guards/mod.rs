@@ -1,12 +1,40 @@
-//! Ironic AuthGuard, parameter extractors, and BOLA object-ownership helpers.
+//! Ironic AuthGuard, parameter extractors, security hooks, and BOLA object-ownership helpers.
+
+pub mod security;
 
 use agents_protocol::ApiKeyScope;
 use ironic::{
     ExtractFuture, ExtractedValue, Guard, GuardDecision, GuardFuture, HttpError,
     ParameterExtractor, RequestContext, RequestScope,
 };
+pub use security::{AgentCircuitBreakerMiddleware, SecurityLifecycleHook};
 
 use crate::modules::auth::{entities::AuthenticatedActor, services::AuthService};
+
+async fn authenticate_context(
+    context: &mut RequestContext,
+) -> Result<AuthenticatedActor, HttpError> {
+    if let Some(actor) = context.extension::<AuthenticatedActor>().cloned() {
+        return Ok(actor);
+    }
+    let token = extract_credential(context.request().headers())?;
+    let scope = context
+        .extension::<RequestScope>()
+        .cloned()
+        .ok_or_else(|| {
+            HttpError::internal("AUTH_SCOPE_MISSING", "Request dependency scope unavailable")
+        })?;
+    let auth_service = scope
+        .resolve::<AuthService>()
+        .await
+        .map_err(|_| HttpError::internal("AUTH_SERVICE_UNAVAILABLE", "AuthService unavailable"))?;
+    let actor = auth_service
+        .authenticate_token(&token)
+        .await
+        .map_err(HttpError::from)?;
+    context.insert_extension(actor.clone());
+    Ok(actor)
+}
 
 /// Route guard authenticating `Authorization: Bearer ...` or `X-Api-Key: ...` credentials.
 #[derive(Default)]
@@ -15,24 +43,7 @@ pub struct AuthGuard;
 impl Guard for AuthGuard {
     fn can_activate<'a>(&'a self, context: &'a mut RequestContext) -> GuardFuture<'a> {
         Box::pin(async move {
-            let token = extract_credential(context.request().headers())?;
-            let scope = context
-                .extension::<RequestScope>()
-                .cloned()
-                .ok_or_else(|| {
-                    HttpError::internal(
-                        "AUTH_SCOPE_MISSING",
-                        "Request dependency scope unavailable",
-                    )
-                })?;
-            let auth_service = scope.resolve::<AuthService>().await.map_err(|_| {
-                HttpError::internal("AUTH_SERVICE_UNAVAILABLE", "AuthService unavailable")
-            })?;
-            let actor = auth_service
-                .authenticate_token(&token)
-                .await
-                .map_err(HttpError::from)?;
-            context.insert_extension(actor);
+            let _ = authenticate_context(context).await?;
             Ok(GuardDecision::Allow)
         })
     }
@@ -185,7 +196,7 @@ impl ScopeGuard {
 impl Guard for ScopeGuard {
     fn can_activate<'a>(&'a self, context: &'a mut RequestContext) -> GuardFuture<'a> {
         Box::pin(async move {
-            let actor = current_actor(context)?;
+            let actor = authenticate_context(context).await?;
             require_scope(&actor, self.required.clone())?;
             Ok(GuardDecision::Allow)
         })
