@@ -81,6 +81,21 @@ pub fn mount_native_stream_and_mcp_routes(
                 async move { dispatch_lazy_mcp(req, mcp_cell).await }
             }),
         )
+        .route(
+            "/metrics/prometheus",
+            axum::routing::get(|| async move {
+                (
+                    [(
+                        axum::http::header::CONTENT_TYPE,
+                        "text/plain; version=0.0.4; charset=utf-8",
+                    )],
+                    ironic::metrics::scrape(),
+                )
+            }),
+        )
+        .layer(ironic::metrics::MetricsLayer::new(
+            ironic::metrics::MetricsConfig::default(),
+        ))
 }
 
 async fn dispatch_lazy_mcp(req: AxumRequest<Body>, cell: Arc<OnceLock<McpHttpState>>) -> Response {

@@ -7,6 +7,7 @@ use std::{
 
 use ironic::{
     AxumAdapter, LifecycleDefinition, OpenApiAxumApplication, OpenApiAxumExt, ProviderDefinition,
+    metrics::MetricsModule,
     prelude::*,
     register_health_indicator,
     security::{
@@ -29,6 +30,9 @@ use crate::{
         db::{BusHealthIndicator, Database, PostgresHealthIndicator, StateHealthIndicator},
         error::ServerError,
         events::AppEventBus,
+        observability::{
+            ProviderHealthIndicator, TraceContextMiddleware, apply_observability_plugins,
+        },
         state::StateBackend,
         stream::{
             AdmissionStore, BusClient, InMemoryStreamRepository, PgStreamRepository, StreamStore,
@@ -79,7 +83,7 @@ impl Module for InfraModule {
         let events = AppEventBus::default();
         let circuit_breaker = AgentCircuitBreaker::default();
         let security_hook = SecurityLifecycleHook::new(Arc::new(events.clone()));
-        ModuleDefinition::builder::<Self>()
+        let builder = ModuleDefinition::builder::<Self>()
             .provider(ProviderDefinition::value(ServerConfig::for_tests()))
             .provider(ProviderDefinition::value(AppCache::default()))
             .provider(ProviderDefinition::value(events))
@@ -123,7 +127,9 @@ impl Module for InfraModule {
                     .guard_denied()
                     .on_error()
                     .build(),
-            )
+            );
+        apply_observability_plugins(builder)
+            .unwrap_or_else(|_| ModuleDefinition::builder::<Self>())
             .build()
     }
 }
@@ -132,6 +138,7 @@ impl Module for InfraModule {
 #[derive(Module)]
 #[module(imports = [
     HealthModule,
+    MetricsModule,
     InfraModule,
     AuditModule,
     AuthModule,
@@ -372,6 +379,7 @@ pub async fn build_application(
         .middleware(SecurityHeadersMiddleware::new(
             SecurityHeadersConfig::default(),
         ))
+        .middleware(TraceContextMiddleware::new())
         .middleware(AgentCircuitBreakerMiddleware::new(
             circuit_breaker,
             security_hook,
@@ -384,7 +392,8 @@ pub async fn build_application(
                 .max_connections(10_000)
                 .max_concurrent_requests(5_000)
                 .request_body_limit(4 * 1024 * 1024)
-                .request_timeout(Duration::from_secs(30))
+                .request_timeout(Duration::from_secs(120))
+                .drain_timeout(Duration::from_secs(30))
                 .configure_router(move |router| {
                     mount_native_stream_and_mcp_routes(
                         router, gw_cell, mcp_cell, nodes_cell, doc_cell,
@@ -395,6 +404,10 @@ pub async fn build_application(
         .build()
         .await
         .map_err(|err| ServerError::Internal(format!("application build failed: {err}")))?;
+
+    register_health_indicator(Arc::new(ProviderHealthIndicator::new(
+        app.container().clone(),
+    )));
 
     {
         use http_body_util::BodyExt;

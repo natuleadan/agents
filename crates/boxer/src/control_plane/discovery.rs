@@ -37,6 +37,8 @@ fn compute_hmac_hex(key: &[u8], msg: &[u8]) -> String {
     hex::encode(outer.finalize())
 }
 
+static HEARTBEAT_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+
 /// Spawns an Ironic-native periodic task that announces Boxer capacity and node status to agents-server
 /// via HMAC-SHA256 signed `POST /api/v1/nodes/register`.
 pub fn start_autodiscovery_heartbeat(
@@ -55,6 +57,7 @@ pub fn start_autodiscovery_heartbeat(
         let http = client.clone();
 
         async move {
+            let seq = HEARTBEAT_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
             let health = svc.health().await;
             let register_url = format!("{}/api/v1/nodes/register", cfg.server_internal_url);
             let node_ip = "127.0.0.1";
@@ -76,20 +79,37 @@ pub fn start_autodiscovery_heartbeat(
                 "signature": signature,
             });
 
+            let traceparent = format!(
+                "00-{:032x}-{:016x}-01",
+                uuid::Uuid::new_v4().as_u128(),
+                (uuid::Uuid::new_v4().as_u128() >> 64) as u64
+            );
+
             match http
                 .post(&register_url)
                 .header("Content-Type", "application/json")
+                .header("traceparent", &traceparent)
                 .json(&payload)
                 .send()
                 .await
             {
                 Ok(resp) if resp.status().is_success() => {
-                    debug!(
-                        node_id = %cfg.node_id,
-                        status = %resp.status(),
-                        active_boxes = health.active_boxes,
-                        "sent signed Boxer node registration heartbeat"
-                    );
+                    if seq == 1 || seq.is_multiple_of(10) {
+                        tracing::info!(
+                            node_id = %cfg.node_id,
+                            seq,
+                            active_boxes = health.active_boxes,
+                            traceparent = %traceparent,
+                            "sent signed Boxer node registration heartbeat"
+                        );
+                    } else {
+                        debug!(
+                            node_id = %cfg.node_id,
+                            seq,
+                            active_boxes = health.active_boxes,
+                            "sent signed Boxer node registration heartbeat"
+                        );
+                    }
                 }
                 Ok(resp) => {
                     warn!(

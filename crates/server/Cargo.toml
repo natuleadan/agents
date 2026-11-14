@@ -14,6 +14,11 @@ path = "src/main.rs"
 name = "agents-migrate"
 path = "src/bin/agents_migrate.rs"
 
+[[bench]]
+name = "ironic_pipeline"
+path = "benches/ironic_pipeline.rs"
+harness = false
+
 [dependencies]
 agents-protocol = { path = "../protocol", features = ["openapi"] }
 agents-styles = { path = "../styles" }
@@ -50,6 +55,10 @@ ironic = { version = "1.3.0", features = [
     "resilience",
     "resilience-ext",
     "application-services",
+    "devtools",
+    "plugins",
+    "versioning",
+    "custom-decorators",
 ] }
 jsonwebtoken = "9"
 redis = { version = "1.3", default-features = false, features = ["aio", "tokio-comp", "connection-manager", "script", "tokio-rustls-comp"] }
