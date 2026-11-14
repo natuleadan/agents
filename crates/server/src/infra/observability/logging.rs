@@ -132,12 +132,14 @@ pub fn init_structured_logging(logging: &LoggingConfig, apm: &ApmConfig) -> Opti
     let writable_dir = logging.resolve_writable_dir();
     let storage = Arc::new(FileLogStorage::new(&writable_dir));
     let ts_layer = TimeSeriesConfig::default().with_storage(storage).layer();
-    let filter =
+    let ts_filter =
+        EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&logging.level));
+    let fmt_filter =
         EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&logging.level));
 
     let _ = tracing_subscriber::registry()
-        .with(ts_layer)
-        .with(tracing_subscriber::fmt::layer().with_filter(filter))
+        .with(ts_layer.with_filter(ts_filter))
+        .with(tracing_subscriber::fmt::layer().with_filter(fmt_filter))
         .try_init();
 
     None
