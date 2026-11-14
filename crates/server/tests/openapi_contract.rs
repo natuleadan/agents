@@ -88,6 +88,40 @@ async fn openapi_spec_is_enriched_and_scalar_ui_renders_completely() {
         "expected at least 30 checked operations, got {checked_operations}"
     );
 
+    // Invariant: System & Health endpoints (/health, /health/live, /health/ready, /version)
+    // must be grouped under "System & Health", declare non-empty summaries and response body schemas
+    for system_path in ["/health", "/health/live", "/health/ready", "/version"] {
+        let op = paths
+            .get(system_path)
+            .and_then(|p| p.get("get"))
+            .unwrap_or_else(|| panic!("missing system path {system_path} in openapi paths"));
+        let tags = op
+            .get("tags")
+            .and_then(Value::as_array)
+            .expect("tags array");
+        assert!(
+            tags.iter().any(|t| t.as_str() == Some("System & Health")),
+            "path {system_path} must be tagged with 'System & Health'"
+        );
+        assert!(
+            op.get("summary")
+                .and_then(Value::as_str)
+                .is_some_and(|s| !s.is_empty()),
+            "path {system_path} must have a non-empty summary"
+        );
+        let resp200 = op
+            .get("responses")
+            .and_then(|r| r.get("200"))
+            .expect("200 response");
+        let content = resp200
+            .get("content")
+            .and_then(|c| c.get("application/json"));
+        assert!(
+            content.is_some(),
+            "path {system_path} must declare application/json response schema for 200"
+        );
+    }
+
     let schemas = spec
         .get("components")
         .and_then(|c| c.get("schemas"))

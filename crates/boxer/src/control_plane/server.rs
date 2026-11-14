@@ -24,7 +24,7 @@ pub struct ControlPlaneState {
     pub cluster_secret: String,
 }
 
-/// Constructs the Axum/Ironic HTTP router for Boxer's `/v2/box` control plane.
+/// Constructs the Axum/Ironic HTTP router for Boxer's `/v1/box` control plane.
 pub fn build_control_plane_router(
     service: Arc<BoxerControlPlaneService>,
     config: &BoxerConfig,
@@ -34,9 +34,27 @@ pub fn build_control_plane_router(
         cluster_secret: config.cluster_secret.clone(),
     };
 
-    Router::new()
+    let scalar_cfg = serde_json::json!({
+        "url": "/openapi.json",
+        "theme": "purple",
+        "hideModels": false,
+        "showSidebar": true
+    });
+    let scalar_cfg_slash = scalar_cfg.clone();
+
+    let api_router = Router::new()
         .route("/health/live", get(health_live_handler))
         .route("/health/ready", get(health_ready_handler))
+        // v1 routes (primary)
+        .route("/v1/box", post(provision_box_handler))
+        .route("/v1/box/{id}/exec", post(exec_box_handler))
+        .route("/v1/box/{id}/status", get(status_box_handler))
+        .route(
+            "/v1/box/{id}/files",
+            get(read_file_handler).post(write_file_handler),
+        )
+        .route("/v1/box/{id}", delete(teardown_box_handler))
+        // v2 routes (backward-compatibility alias)
         .route("/v2/box", post(provision_box_handler))
         .route("/v2/box/{id}/exec", post(exec_box_handler))
         .route("/v2/box/{id}/status", get(status_box_handler))
@@ -45,7 +63,146 @@ pub fn build_control_plane_router(
             get(read_file_handler).post(write_file_handler),
         )
         .route("/v2/box/{id}", delete(teardown_box_handler))
-        .with_state(state)
+        .with_state(state);
+
+    api_router
+        .route("/openapi.json", get(boxer_openapi_handler))
+        .merge(scalar_api_reference::axum::router("/docs", &scalar_cfg))
+        .route(
+            "/docs/",
+            get(move || async move {
+                scalar_api_reference::axum::scalar_response(
+                    &scalar_cfg_slash,
+                    Some("/docs/scalar.js"),
+                )
+            }),
+        )
+}
+
+async fn boxer_openapi_handler() -> impl IntoResponse {
+    let spec = boxer_openapi_spec();
+    (
+        [(axum::http::header::CONTENT_TYPE, "application/json")],
+        spec.to_string(),
+    )
+}
+
+fn boxer_openapi_spec() -> serde_json::Value {
+    serde_json::json!({
+        "openapi": "3.1.0",
+        "info": {
+            "title": "agents-boxer API",
+            "version": env!("CARGO_PKG_VERSION"),
+            "description": "Internal sandbox supervisor and execution daemon control plane"
+        },
+        "tags": [
+            { "name": "System & Health", "description": "Liveness and readiness probes" },
+            { "name": "Sandboxes", "description": "Confined sandbox provisioning, execution, and VFS file operations" }
+        ],
+        "paths": {
+            "/health/live": {
+                "get": {
+                    "tags": ["System & Health"],
+                    "summary": "Liveness probe",
+                    "description": "Verifies that the Boxer daemon process is active.",
+                    "responses": {
+                        "200": { "description": "Daemon is alive" }
+                    }
+                }
+            },
+            "/health/ready": {
+                "get": {
+                    "tags": ["System & Health"],
+                    "summary": "Readiness probe",
+                    "description": "Returns current node capacity and active box counts.",
+                    "responses": {
+                        "200": { "description": "Boxer node ready to accept sandboxes" }
+                    }
+                }
+            },
+            "/v1/box": {
+                "post": {
+                    "tags": ["Sandboxes"],
+                    "summary": "Provision a new sandbox",
+                    "description": "Allocates an isolated workspace directory and provisions container runtime resources.",
+                    "security": [{ "clusterSecretAuth": [] }],
+                    "responses": {
+                        "201": { "description": "Sandbox provisioned successfully" },
+                        "401": { "description": "Missing or invalid cluster secret" },
+                        "429": { "description": "Capacity exceeded" },
+                        "500": { "description": "Provisioning failure" }
+                    }
+                }
+            },
+            "/v1/box/{id}/exec": {
+                "post": {
+                    "tags": ["Sandboxes"],
+                    "summary": "Execute command in sandbox",
+                    "description": "Runs a command hermetically inside the sandbox with stdout/stderr capture and cancellation guards.",
+                    "security": [{ "clusterSecretAuth": [] }],
+                    "responses": {
+                        "200": { "description": "Execution completed" },
+                        "401": { "description": "Missing or invalid cluster secret" },
+                        "404": { "description": "Sandbox not found" },
+                        "500": { "description": "Execution failure" }
+                    }
+                }
+            },
+            "/v1/box/{id}/status": {
+                "get": {
+                    "tags": ["Sandboxes"],
+                    "summary": "Get sandbox status and metrics",
+                    "security": [{ "clusterSecretAuth": [] }],
+                    "responses": {
+                        "200": { "description": "Current sandbox runtime metrics" },
+                        "404": { "description": "Sandbox not found" }
+                    }
+                }
+            },
+            "/v1/box/{id}/files": {
+                "get": {
+                    "tags": ["Sandboxes"],
+                    "summary": "Read file from sandbox VFS",
+                    "security": [{ "clusterSecretAuth": [] }],
+                    "responses": {
+                        "200": { "description": "File contents read successfully" },
+                        "400": { "description": "Path traversal attempt blocked" },
+                        "404": { "description": "File not found" }
+                    }
+                },
+                "post": {
+                    "tags": ["Sandboxes"],
+                    "summary": "Write file to sandbox VFS",
+                    "security": [{ "clusterSecretAuth": [] }],
+                    "responses": {
+                        "200": { "description": "File written successfully" },
+                        "400": { "description": "Path traversal attempt blocked" },
+                        "404": { "description": "Sandbox not found" }
+                    }
+                }
+            },
+            "/v1/box/{id}": {
+                "delete": {
+                    "tags": ["Sandboxes"],
+                    "summary": "Teardown and purge sandbox",
+                    "security": [{ "clusterSecretAuth": [] }],
+                    "responses": {
+                        "200": { "description": "Sandbox teardown complete" },
+                        "404": { "description": "Sandbox not found" }
+                    }
+                }
+            }
+        },
+        "components": {
+            "securitySchemes": {
+                "clusterSecretAuth": {
+                    "type": "http",
+                    "scheme": "bearer",
+                    "description": "Boxer cluster secret passed via Authorization Bearer header or X-Boxer-Secret"
+                }
+            }
+        }
+    })
 }
 
 fn verify_auth(

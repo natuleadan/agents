@@ -13,6 +13,7 @@ pub mod migrate;
 pub mod state;
 pub mod stream;
 pub mod webui;
+pub mod workers;
 
 pub use adapters::{
     BlobStoreClient, BlobStorePort, InfrastructureRegistry, LocalFsBlobStore, QstashMessageBus,

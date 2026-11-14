@@ -27,7 +27,7 @@ use crate::modules::{
     gateway::dto::StreamReplayQuery,
     mcp::dto::McpPolicyInfo,
     nodes::{
-        dto::{NodeHeartbeatDto, PreviewSyncDto},
+        dto::{NodeHeartbeatDto, NodeRegistrationDto, NodeRegistrationResponse, PreviewSyncDto},
         entities::{NodeListResponse, PreviewSyncAck},
     },
     sessions::{
@@ -58,6 +58,7 @@ use crate::modules::{
 #[must_use]
 pub fn configure_openapi() -> OpenApiConfig {
     OpenApiConfig::new("agents-server API", env!("CARGO_PKG_VERSION"))
+        .json_path("/openapi.raw.json")
         .description("Distributed agent harness control plane built on Ironic")
         .security_scheme(
             "bearerAuth",
@@ -149,6 +150,8 @@ pub fn configure_openapi() -> OpenApiConfig {
         .schema::<crate::modules::swarm::dto::BlackboardEntryResponse>("BlackboardEntryResponse")
         // Node schemas
         .schema::<NodeHeartbeatDto>("NodeHeartbeatDto")
+        .schema::<NodeRegistrationDto>("NodeRegistrationDto")
+        .schema::<NodeRegistrationResponse>("NodeRegistrationResponse")
         .schema::<PreviewSyncDto>("PreviewSyncDto")
         .schema::<NodeListResponse>("NodeListResponse")
         .schema::<PreviewSyncAck>("PreviewSyncAck")
@@ -161,4 +164,167 @@ pub fn configure_openapi() -> OpenApiConfig {
         .schema::<StreamReplayQuery>("StreamReplayQuery")
         // Standard error envelope
         .schema::<crate::infra::error::ErrorResponse>("ErrorResponse")
+        // System and health schemas
+        .schema::<CompositeHealthResponse>("CompositeHealthResponse")
+        .schema::<LivenessResponse>("LivenessResponse")
+        .schema::<SystemVersionResponse>("SystemVersionResponse")
+}
+
+/// Health check detail for a single system dependency.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ironic::OpenApiSchema)]
+pub struct DependencyHealthCheck {
+    /// Component status ('ok', 'degraded', 'unhealthy').
+    pub status: String,
+    /// Optional human-readable diagnostic message.
+    pub message: Option<String>,
+}
+
+/// Composite health response aggregating database, cache, and message bus indicators.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ironic::OpenApiSchema)]
+pub struct CompositeHealthResponse {
+    /// Overall system status ('ok', 'degraded', 'unhealthy').
+    pub status: String,
+    /// Detailed status per registered health indicator.
+    pub checks: std::collections::HashMap<String, DependencyHealthCheck>,
+}
+
+/// Daemon process liveness probe response.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ironic::OpenApiSchema)]
+pub struct LivenessResponse {
+    /// Process status (always 'alive').
+    pub status: String,
+}
+
+/// System build and runtime version metadata.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ironic::OpenApiSchema)]
+pub struct SystemVersionResponse {
+    /// Semantic release version.
+    pub version: String,
+    /// Git commit revision hash.
+    pub git_sha: String,
+}
+
+/// Enriches raw OpenAPI 3.1 specification with metadata, tags, and response schemas
+/// for built-in health and version routes.
+pub fn enrich_openapi_spec(spec: &mut serde_json::Value) {
+    let Some(paths) = spec
+        .get_mut("paths")
+        .and_then(serde_json::Value::as_object_mut)
+    else {
+        return;
+    };
+
+    if let Some(get_op) = paths
+        .get_mut("/health")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|h| h.get_mut("get"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        get_op.insert("tags".into(), serde_json::json!(["System & Health"]));
+        get_op.insert(
+            "summary".into(),
+            serde_json::json!("Composite health check"),
+        );
+        get_op.insert(
+            "description".into(),
+            serde_json::json!("Aggregates all registered health indicators (PostgreSQL, Valkey, NATS). Returns 200 when healthy, 207 when degraded, 503 when unhealthy."),
+        );
+        get_op.insert(
+            "responses".into(),
+            serde_json::json!({
+                "200": {
+                    "description": "All system components healthy",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CompositeHealthResponse" } } }
+                },
+                "207": {
+                    "description": "One or more non-critical components degraded",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CompositeHealthResponse" } } }
+                },
+                "503": {
+                    "description": "Critical infrastructure dependencies unhealthy",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CompositeHealthResponse" } } }
+                }
+            }),
+        );
+    }
+
+    if let Some(get_op) = paths
+        .get_mut("/health/live")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|hl| hl.get_mut("get"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        get_op.insert("tags".into(), serde_json::json!(["System & Health"]));
+        get_op.insert("summary".into(), serde_json::json!("Liveness probe"));
+        get_op.insert(
+            "description".into(),
+            serde_json::json!(
+                "Liveness probe indicating the server process is alive and responsive."
+            ),
+        );
+        get_op.insert(
+            "responses".into(),
+            serde_json::json!({
+                "200": {
+                    "description": "Process is alive",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/LivenessResponse" } } }
+                }
+            }),
+        );
+    }
+
+    if let Some(get_op) = paths
+        .get_mut("/health/ready")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|hr| hr.get_mut("get"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        get_op.insert("tags".into(), serde_json::json!(["System & Health"]));
+        get_op.insert("summary".into(), serde_json::json!("Readiness probe"));
+        get_op.insert(
+            "description".into(),
+            serde_json::json!(
+                "Readiness probe verifying database, cache, and message bus dependencies."
+            ),
+        );
+        get_op.insert(
+            "responses".into(),
+            serde_json::json!({
+                "200": {
+                    "description": "All dependencies ready to serve traffic",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CompositeHealthResponse" } } }
+                },
+                "503": {
+                    "description": "One or more critical dependencies unavailable",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/CompositeHealthResponse" } } }
+                }
+            }),
+        );
+    }
+
+    if let Some(get_op) = paths
+        .get_mut("/version")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|v| v.get_mut("get"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        get_op.insert("tags".into(), serde_json::json!(["System & Health"]));
+        get_op.insert(
+            "summary".into(),
+            serde_json::json!("System build and version information"),
+        );
+        get_op.insert(
+            "description".into(),
+            serde_json::json!("Returns current version, git revision SHA, and build metadata."),
+        );
+        get_op.insert(
+            "responses".into(),
+            serde_json::json!({
+                "200": {
+                    "description": "Build and runtime version metadata",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SystemVersionResponse" } } }
+                }
+            }),
+        );
+    }
 }

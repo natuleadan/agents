@@ -25,8 +25,8 @@ use crate::{
 
 pub use crate::infra::state::StateStore;
 pub use crypto::{
-    constant_time_eq_hex, decode_jwt, generate_opaque_secret, hash_password, now_secs, sha256_hex,
-    sign_jwt, verify_password,
+    compute_hmac_hex, compute_hmac_sha256, constant_time_eq_hex, decode_jwt,
+    generate_opaque_secret, hash_password, now_secs, sha256_hex, sign_jwt, verify_password,
 };
 
 /// Manages user identity, credential hashing/verification, and token/key issuance.

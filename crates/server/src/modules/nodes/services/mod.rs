@@ -83,6 +83,71 @@ impl NodeRegistryService {
         Ok(node)
     }
 
+    /// Registers a Boxer node via HMAC-SHA256 handshake and issues a dynamic session token.
+    ///
+    /// # Errors
+    ///
+    /// Returns [`ServerError::Validation`] on replay attack or invalid signature.
+    pub async fn register_node_hmac(
+        &self,
+        dto: &crate::modules::nodes::dto::NodeRegistrationDto,
+        cluster_secret: &str,
+    ) -> Result<crate::modules::nodes::dto::NodeRegistrationResponse, ServerError> {
+        let current_time = now_ms();
+        if current_time.abs_diff(dto.timestamp_ms) > 60_000 {
+            return Err(ServerError::Validation(
+                "registration timestamp expired or clock skew exceeds 60s".into(),
+            ));
+        }
+
+        let payload = format!(
+            "{}:{}:{}:{}",
+            dto.node_id, dto.node_ip, dto.port, dto.timestamp_ms
+        );
+        let expected_sig = crate::modules::auth::services::compute_hmac_hex(
+            cluster_secret.as_bytes(),
+            payload.as_bytes(),
+        );
+
+        if !bool::from(subtle::ConstantTimeEq::ct_eq(
+            dto.signature.to_lowercase().as_bytes(),
+            expected_sig.as_bytes(),
+        )) {
+            return Err(ServerError::Validation(
+                "invalid node registration signature".into(),
+            ));
+        }
+
+        let session_token = format!("boxer-tok-{}-{}", dto.node_id, uuid::Uuid::new_v4());
+        let expires_at = current_time + 3_600_000;
+
+        let node = BoxerNodeAnnouncement {
+            node_id: dto.node_id.clone(),
+            vlan_ip: dto.node_ip.clone(),
+            runtime: dto.runtime.clone(),
+            isolation: dto.isolation.clone(),
+            max_concurrent_boxes: dto.max_concurrent_boxes,
+            active_boxes: 0,
+            status: agents_protocol::NodeStatus::Online,
+            last_heartbeat_ms: current_time,
+            ttl_seconds: 60,
+        };
+
+        self.store
+            .inner
+            .lock()
+            .await
+            .nodes
+            .insert(node.node_id.clone(), node.clone());
+
+        Ok(crate::modules::nodes::dto::NodeRegistrationResponse {
+            node_id: dto.node_id.clone(),
+            session_token,
+            expires_at,
+            status: "registered".into(),
+        })
+    }
+
     /// Lists non-expired Boxer nodes currently advertising capacity over the VLAN.
     pub async fn list_active_nodes(&self) -> NodeListResponse {
         let now = now_ms();
