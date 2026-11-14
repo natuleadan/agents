@@ -2,7 +2,6 @@
 set -euo pipefail
 
 # Provision or update telemetry, OpenTelemetry collector wiring, and disk retention caps.
-ROLE="${AGENTS_ROLE:-monolithic}"
 ENV_FILE="${AGENTS_ENV_FILE:-/etc/agents/agents.env}"
 LOG_DIR="${AGENTS_LOG_DIR:-/var/log/agents}"
 ENABLE_OTEL="${AGENTS_ENABLE_OTEL:-0}"
