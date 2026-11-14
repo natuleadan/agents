@@ -12,7 +12,10 @@ mod common;
 use agents_protocol::{ApiKeyScope, IsolationKind, RuntimeKind};
 use agents_server::{
     ServerConfig,
-    infra::state::now_ms,
+    infra::{
+        events::{AppEventBus, SecurityAlertEvent},
+        state::now_ms,
+    },
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -23,7 +26,8 @@ use agents_server::{
     },
 };
 use axum::http::{Method, StatusCode};
-use common::{build_test_harness, send_json};
+use common::{build_test_harness, register_and_login, send_json};
+use tower::ServiceExt;
 
 #[tokio::test]
 async fn anti_regression_circuit_breaker_trips_on_runaway_agent_violations() {
@@ -131,6 +135,7 @@ async fn anti_regression_node_handshake_hmac_sha256_mutual_auth() {
         runtime: RuntimeKind::Host,
         isolation: IsolationKind::Native,
         max_concurrent_boxes: 32,
+        active_boxes: 2,
         timestamp_ms: now,
         signature: valid_signature,
     };
@@ -172,6 +177,7 @@ async fn anti_regression_node_handshake_hmac_sha256_mutual_auth() {
         runtime: RuntimeKind::Host,
         isolation: IsolationKind::Native,
         max_concurrent_boxes: 32,
+        active_boxes: 0,
         timestamp_ms: stale_timestamp,
         signature: stale_sig,
     };
@@ -206,6 +212,7 @@ async fn anti_regression_node_handshake_hmac_sha256_mutual_auth() {
         runtime: RuntimeKind::Host,
         isolation: IsolationKind::Native,
         max_concurrent_boxes: 32,
+        active_boxes: 0,
         timestamp_ms: now,
         signature: "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff".to_string(),
     };
@@ -251,4 +258,104 @@ async fn anti_regression_rate_limit_key_isolation() {
     )
     .await;
     assert_eq!(status_with_agent, StatusCode::OK);
+}
+
+#[tokio::test]
+async fn anti_regression_circuit_breaker_middleware_and_security_lifecycle() {
+    let harness = build_test_harness(ServerConfig::for_tests()).await;
+    let (_, jwt) = register_and_login(
+        &harness.router,
+        "sec-audit@example.com",
+        "strong-password-123",
+    )
+    .await;
+
+    let events = harness
+        .app
+        .container()
+        .resolve::<AppEventBus>()
+        .await
+        .unwrap();
+    let breaker = harness
+        .app
+        .container()
+        .resolve::<AgentCircuitBreaker>()
+        .await
+        .unwrap();
+    let mut sub = events.subscribe::<SecurityAlertEvent>(16).await;
+
+    // 1. Mint a read-only API key and invoke a Write-guarded endpoint -> declarative ScopeGuard 403 + OnGuardDenied event
+    let (mint_status, mint_body) = send_json(
+        &harness.router,
+        Method::POST,
+        "/api/v1/auth/api-keys",
+        Some(&jwt),
+        Some(serde_json::json!({
+            "label": "ro-key",
+            "scopes": [ApiKeyScope::Read]
+        })),
+    )
+    .await;
+    assert_eq!(
+        mint_status,
+        StatusCode::OK,
+        "mint api key failed: {mint_body}"
+    );
+    let ro_secret = mint_body["plaintextKey"].as_str().unwrap();
+
+    let (denied_status, _) = send_json(
+        &harness.router,
+        Method::POST,
+        "/api/v1/sessions",
+        Some(ro_secret),
+        Some(serde_json::json!({ "title": "Should Fail", "mode": "plan" })),
+    )
+    .await;
+    assert_eq!(
+        denied_status,
+        StatusCode::FORBIDDEN,
+        "ScopeGuard must reject Read key attempting Write route"
+    );
+
+    let alert = tokio::time::timeout(std::time::Duration::from_secs(1), sub.recv())
+        .await
+        .expect("security event timeout")
+        .expect("expected SecurityAlertEvent");
+    assert_eq!(alert.code, "SECURITY_GUARD_DENIED");
+
+    // 2. Trip AgentCircuitBreaker for a runaway agent -> HTTP middleware blocks with 429 AGENT_CIRCUIT_OPEN
+    let agent_id = "rogue-agent-99";
+    let now = i64::try_from(now_ms()).unwrap_or(i64::MAX);
+    assert!(!breaker.record_violation(agent_id, now).await);
+    assert!(!breaker.record_violation(agent_id, now + 10).await);
+    assert!(breaker.record_violation(agent_id, now + 20).await);
+
+    let blocked_req = axum::http::Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/sessions")
+        .header("Authorization", format!("Bearer {ro_secret}"))
+        .header("X-Agent-Id", agent_id)
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let blocked_resp = harness.router.clone().oneshot(blocked_req).await.unwrap();
+    assert_eq!(blocked_resp.status(), StatusCode::TOO_MANY_REQUESTS);
+
+    let cb_alert = tokio::time::timeout(std::time::Duration::from_secs(1), sub.recv())
+        .await
+        .expect("circuit breaker event timeout")
+        .expect("expected AGENT_CIRCUIT_OPEN event");
+    assert_eq!(cb_alert.code, "AGENT_CIRCUIT_OPEN");
+    assert_eq!(cb_alert.actor_id.as_deref(), Some(agent_id));
+
+    // 3. Reset circuit breaker -> request passes cleanly
+    breaker.reset(agent_id).await;
+    let recovered_req = axum::http::Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/sessions")
+        .header("Authorization", format!("Bearer {ro_secret}"))
+        .header("X-Agent-Id", agent_id)
+        .body(axum::body::Body::empty())
+        .unwrap();
+    let recovered_resp = harness.router.clone().oneshot(recovered_req).await.unwrap();
+    assert_eq!(recovered_resp.status(), StatusCode::OK);
 }

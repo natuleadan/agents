@@ -48,6 +48,18 @@ impl AppCache {
     pub async fn remove_by_prefix(&self, prefix: &str) -> usize {
         self.backend.remove_by_prefix(prefix).await.unwrap_or(0)
     }
+
+    /// Returns the underlying shared Ironic cache backend.
+    #[must_use]
+    pub fn backend(&self) -> Arc<dyn Cache> {
+        Arc::clone(&self.backend)
+    }
+
+    /// Wraps this cache backend into an Ironic [`ironic::CacheInterceptor`].
+    #[must_use]
+    pub fn into_interceptor(&self) -> ironic::CacheInterceptor {
+        ironic::CacheInterceptor::new(Arc::clone(&self.backend))
+    }
 }
 
 impl Default for AppCache {

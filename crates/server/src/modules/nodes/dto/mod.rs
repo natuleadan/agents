@@ -55,6 +55,9 @@ pub struct NodeRegistrationDto {
     pub isolation: IsolationKind,
     #[garde(range(min = 1, max = 1024))]
     pub max_concurrent_boxes: usize,
+    #[serde(default)]
+    #[garde(skip)]
+    pub active_boxes: usize,
     /// Timestamp in epoch milliseconds.
     #[garde(range(min = 1))]
     pub timestamp_ms: u64,

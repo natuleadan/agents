@@ -10,7 +10,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, require_scope},
         },
         sessions::{
             dto::{CreateSessionDto, ListSessionsQuery, SaveDraftDto, UpdateSessionDto},
@@ -30,6 +30,7 @@ pub struct SessionsController {
 #[routes]
 impl SessionsController {
     #[post]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Create a session",
         tag = "Sessions",
@@ -53,6 +54,7 @@ impl SessionsController {
     }
 
     #[get]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List caller sessions",
         tag = "Sessions",
@@ -75,6 +77,7 @@ impl SessionsController {
     }
 
     #[get("/:id")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "Get a session by ID",
         tag = "Sessions",
@@ -96,6 +99,7 @@ impl SessionsController {
     }
 
     #[patch("/:id")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Update a session",
         tag = "Sessions",
@@ -122,6 +126,7 @@ impl SessionsController {
     }
 
     #[put("/:id/draft")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Persist a session prompt draft",
         tag = "Sessions",
@@ -147,6 +152,7 @@ impl SessionsController {
     }
 
     #[get("/:id/draft")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "Recover saved session draft",
         tag = "Sessions",
@@ -168,6 +174,7 @@ impl SessionsController {
     }
 
     #[delete("/:id")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Delete a session",
         tag = "Sessions",

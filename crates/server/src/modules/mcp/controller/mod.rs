@@ -19,7 +19,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, extract_credential, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, extract_credential, require_scope},
             services::AuthService,
         },
         mcp::{
@@ -46,6 +46,7 @@ pub struct McpController {
 #[routes]
 impl McpController {
     #[get("/policy")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "Inspect allowlisted MCP tools",
         tag = "MCP",

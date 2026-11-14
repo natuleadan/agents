@@ -10,7 +10,8 @@ use std::{
 };
 
 use agents_protocol::{FencingToken, TaskLease, TaskState};
-use tokio::{sync::watch, task::JoinHandle};
+use ironic::services::scheduling::{ScheduledTask, interval};
+use tokio::sync::watch;
 use tracing::warn;
 
 use crate::{config::now_ms, error::BoxerError, leases::LeaseClient};
@@ -21,7 +22,7 @@ pub struct LeaseSupervisor {
     lease: TaskLease,
     cancelled: Arc<AtomicBool>,
     cancel_tx: watch::Sender<bool>,
-    heartbeat_task: Option<JoinHandle<()>>,
+    heartbeat_task: Option<ScheduledTask>,
 }
 
 impl LeaseSupervisor {
@@ -57,19 +58,20 @@ impl LeaseSupervisor {
         let hb_cancelled = Arc::clone(&cancelled);
         let hb_tx = cancel_tx.clone();
 
-        let heartbeat_task = tokio::spawn(async move {
-            let mut ticker = tokio::time::interval(heartbeat_interval);
-            ticker.tick().await;
-            loop {
-                ticker.tick().await;
+        let heartbeat_task = interval(heartbeat_interval, move || {
+            let hb_client = Arc::clone(&hb_client);
+            let hb_task_id = hb_task_id.clone();
+            let hb_cancelled = Arc::clone(&hb_cancelled);
+            let hb_tx = hb_tx.clone();
+            async move {
                 if hb_cancelled.load(Ordering::SeqCst) {
-                    break;
+                    return;
                 }
                 if now_ms() >= hb_expires {
                     warn!(task_id = %hb_task_id, "lease TTL elapsed locally; tripping cancellation");
                     hb_cancelled.store(true, Ordering::SeqCst);
                     let _ = hb_tx.send(true);
-                    break;
+                    return;
                 }
                 if let Err(err) = hb_client
                     .report_state(
@@ -87,7 +89,6 @@ impl LeaseSupervisor {
                     );
                     hb_cancelled.store(true, Ordering::SeqCst);
                     let _ = hb_tx.send(true);
-                    break;
                 }
             }
         });
@@ -123,7 +124,7 @@ impl LeaseSupervisor {
         self.cancelled.store(true, Ordering::SeqCst);
         let _ = self.cancel_tx.send(true);
         if let Some(handle) = self.heartbeat_task.take() {
-            handle.abort();
+            handle.pause();
         }
     }
 }
@@ -133,7 +134,7 @@ impl Drop for LeaseSupervisor {
         self.cancelled.store(true, Ordering::SeqCst);
         let _ = self.cancel_tx.send(true);
         if let Some(handle) = self.heartbeat_task.take() {
-            handle.abort();
+            handle.pause();
         }
     }
 }

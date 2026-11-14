@@ -13,7 +13,7 @@ use crate::{
             RevokeApiKeyResponse,
         },
         entities::AuthenticatedActor,
-        guards::{AuthGuard, CurrentActor, require_scope},
+        guards::{AuthGuard, CurrentActor, ScopeGuard, require_scope},
         services::AuthService,
     },
 };
@@ -101,6 +101,7 @@ impl AuthController {
 
     #[post("/api-keys")]
     #[guard(AuthGuard)]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Mint a revocable SHA-256 API key",
         tag = "Auth",
@@ -125,6 +126,7 @@ impl AuthController {
 
     #[get("/api-keys")]
     #[guard(AuthGuard)]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List caller API key metadata",
         tag = "Auth",
@@ -145,6 +147,7 @@ impl AuthController {
 
     #[delete("/api-keys/:id")]
     #[guard(AuthGuard)]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Revoke an API key by ID",
         tag = "Auth",

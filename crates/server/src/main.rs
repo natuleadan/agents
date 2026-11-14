@@ -7,8 +7,8 @@ use std::{fs, path::PathBuf, time::Duration};
 use agents_protocol::export_protocol_schema;
 use agents_server::{
     DoctorReport, InfrastructureHandles, MigrationSnapshot, ServerConfig,
-    app::start_retention_worker, build_application, export_snapshot, import_snapshot,
-    verify_database,
+    app::{start_autocron_worker, start_retention_worker},
+    build_application, export_snapshot, import_snapshot, verify_database,
 };
 use clap::{Parser, Subcommand};
 use sqlx::postgres::PgPoolOptions;
@@ -163,10 +163,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             let bind_addr = config.bind_addr.clone();
             let infra = InfrastructureHandles::from_config(config).await?;
             let app = build_application(infra).await?;
-            let retention_handle = start_retention_worker(&app, Duration::from_secs(3600)).await?;
+            let retention_task = start_retention_worker(&app, Duration::from_secs(3600)).await?;
+            let autocron_task = start_autocron_worker(&app, Duration::from_secs(15)).await?;
             tracing::info!("agents-server listening on http://{bind_addr}");
             let result = app.listen(&bind_addr).await;
-            retention_handle.abort();
+            let _ = autocron_task.shutdown().await;
+            let _ = retention_task.shutdown().await;
             result?;
         }
     }

@@ -20,7 +20,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, require_scope},
         },
         nodes::{
             dto::{
@@ -49,6 +49,7 @@ pub struct NodesController {
 impl NodesController {
     #[get]
     #[guard(AuthGuard)]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List active auto-registered private-VLAN Boxer nodes",
         tag = "Nodes",
@@ -68,6 +69,7 @@ impl NodesController {
 
     #[post("/heartbeat")]
     #[guard(AuthGuard)]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Register or refresh a private-VLAN Boxer worker node",
         tag = "Nodes",
@@ -114,6 +116,7 @@ impl NodesController {
 
     #[post("/previews")]
     #[guard(AuthGuard)]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Publish or revoke a distributed Traefik preview route",
         tag = "Nodes",

@@ -257,3 +257,43 @@ async fn anti_regression_session_caching_and_event_integration() {
     assert_eq!(hit_status, StatusCode::OK);
     assert_eq!(hit_body["id"], session_id);
 }
+
+fn collect_rs_files(dir: &std::path::Path, out: &mut Vec<std::path::PathBuf>) {
+    if let Ok(entries) = std::fs::read_dir(dir) {
+        for entry in entries.flatten() {
+            let path = entry.path();
+            if path.is_dir() {
+                collect_rs_files(&path, out);
+            } else if path.extension().and_then(|e| e.to_str()) == Some("rs") {
+                out.push(path);
+            }
+        }
+    }
+}
+
+#[test]
+fn anti_regression_cache_interceptor_and_no_raw_tokio_intervals() {
+    let cache = AppCache::in_memory(64);
+    let _interceptor = cache.into_interceptor();
+    let _backend = cache.backend();
+
+    let server_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("src");
+    let boxer_src = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+        .parent()
+        .expect("crates dir")
+        .join("boxer/src");
+
+    let mut files = Vec::new();
+    collect_rs_files(&server_src, &mut files);
+    collect_rs_files(&boxer_src, &mut files);
+    assert!(!files.is_empty(), "must scan server and boxer source trees");
+
+    for file in files {
+        let contents = std::fs::read_to_string(&file).expect("read source file");
+        assert!(
+            !contents.contains("tokio::time::interval"),
+            "forbidden raw tokio::time::interval found in {} (use ironic::services::scheduling::interval)",
+            file.display()
+        );
+    }
+}

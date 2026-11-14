@@ -2,6 +2,7 @@
 
 pub mod discovery;
 pub mod dto;
+pub mod openapi;
 pub mod server;
 pub mod service;
 

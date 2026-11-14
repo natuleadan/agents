@@ -311,3 +311,136 @@ async fn anti_regression_boxer_autodiscovery_heartbeat_task() {
         "heartbeat scheduled task must shut down cleanly"
     );
 }
+
+#[tokio::test]
+async fn anti_regression_boxer_health_version_and_openapi_schemas() {
+    let (cfg, _tmp) = test_config();
+    let service = Arc::new(BoxerControlPlaneService::new(Arc::clone(&cfg)));
+    let app = build_control_plane_router(Arc::clone(&service), &cfg);
+
+    for path in ["/health", "/health/live", "/health/ready", "/version"] {
+        let req = Request::builder()
+            .method("GET")
+            .uri(path)
+            .body(Body::empty())
+            .unwrap();
+        let resp = app.clone().oneshot(req).await.unwrap();
+        assert_eq!(
+            resp.status(),
+            StatusCode::OK,
+            "route {path} must return 200"
+        );
+    }
+
+    let req = Request::builder()
+        .method("GET")
+        .uri("/openapi.json")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = axum::body::to_bytes(resp.into_body(), 1024 * 256)
+        .await
+        .unwrap();
+    let spec: serde_json::Value = serde_json::from_slice(&bytes).unwrap();
+
+    for schema_name in [
+        "ProvisionBoxRequest",
+        "ProvisionBoxResponse",
+        "ExecBoxRequest",
+        "ExecBoxResponse",
+        "BoxStatusResponse",
+        "WriteFileRequest",
+        "WriteFileResponse",
+        "ReadFileResponse",
+        "TeardownBoxResponse",
+        "BoxerHealthResponse",
+        "VersionResponse",
+        "BoxerProblemDetails",
+    ] {
+        assert!(
+            spec["components"]["schemas"][schema_name].is_object(),
+            "Boxer OpenAPI components.schemas.{schema_name} missing"
+        );
+    }
+
+    assert!(
+        spec["paths"]["/v1/box"]["post"]["requestBody"]["content"]["application/json"]["schema"]["$ref"]
+            .as_str()
+            .is_some(),
+        "POST /v1/box must declare typed JSON requestBody schema"
+    );
+    assert!(
+        spec["paths"]["/v1/box"]["post"]["responses"]["201"]["content"]["application/json"]["schema"]["$ref"]
+            .as_str()
+            .is_some(),
+        "POST /v1/box 201 must declare typed JSON response schema"
+    );
+    assert!(
+        spec["paths"]["/version"]["get"].is_object(),
+        "/version must be documented in Boxer OpenAPI"
+    );
+}
+
+#[tokio::test]
+async fn anti_regression_boxer_signed_autodiscovery_heartbeat_delivery() {
+    use axum::{Router, extract::State, response::IntoResponse, routing::post};
+    use tokio::sync::{Mutex, Notify};
+
+    #[derive(Clone, Default)]
+    struct CaptureState {
+        payload: Arc<Mutex<Option<serde_json::Value>>>,
+        notify: Arc<Notify>,
+    }
+
+    async fn mock_register(
+        State(state): State<CaptureState>,
+        axum::Json(body): axum::Json<serde_json::Value>,
+    ) -> impl IntoResponse {
+        *state.payload.lock().await = Some(body);
+        state.notify.notify_one();
+        (
+            StatusCode::OK,
+            axum::Json(serde_json::json!({ "status": "registered" })),
+        )
+    }
+
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let addr = listener.local_addr().unwrap();
+    let capture = CaptureState::default();
+    let mock_app = Router::new()
+        .route("/api/v1/nodes/register", post(mock_register))
+        .with_state(capture.clone());
+    let server_handle = tokio::spawn(async move {
+        let _ = axum::serve(listener, mock_app).await;
+    });
+
+    let (base_cfg, _tmp) = test_config();
+    let mut cfg_val = (*base_cfg).clone();
+    cfg_val.server_internal_url = format!("http://{addr}");
+    let cfg = Arc::new(cfg_val);
+    let service = Arc::new(BoxerControlPlaneService::new(Arc::clone(&cfg)));
+
+    let task = start_autodiscovery_heartbeat(cfg, service, Duration::from_millis(25));
+    tokio::time::timeout(Duration::from_secs(3), capture.notify.notified())
+        .await
+        .expect("signed heartbeat must arrive at /api/v1/nodes/register");
+    let _ = task.shutdown().await;
+    server_handle.abort();
+
+    let payload = capture
+        .payload
+        .lock()
+        .await
+        .clone()
+        .expect("captured payload");
+    assert_eq!(payload["nodeId"], "test-boxer-01");
+    assert_eq!(payload["nodeIp"], "127.0.0.1");
+    assert_eq!(payload["port"], 9091);
+    assert!(payload["timestampMs"].as_u64().unwrap_or(0) > 0);
+    assert_eq!(
+        payload["signature"].as_str().map(str::len),
+        Some(64),
+        "signed registration payload must contain 64-char HMAC-SHA256 hex digest"
+    );
+}

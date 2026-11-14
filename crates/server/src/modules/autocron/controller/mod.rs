@@ -10,7 +10,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, require_scope},
         },
         autocron::{
             dto::{CreateScheduleDto, ExecuteScheduleDto, ToggleScheduleDto, TriggerWebhookDto},
@@ -30,6 +30,7 @@ pub struct AutocronController {
 #[routes]
 impl AutocronController {
     #[post("/schedules")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Create an Autocron workflow schedule",
         tag = "Autocron",
@@ -53,6 +54,7 @@ impl AutocronController {
     }
 
     #[get("/schedules")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List owned Autocron schedules",
         tag = "Autocron",
@@ -72,6 +74,7 @@ impl AutocronController {
     }
 
     #[post("/schedules/:schedule_id/run")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Execute an Autocron schedule with budget enforcement",
         tag = "Autocron",
@@ -101,6 +104,7 @@ impl AutocronController {
     }
 
     #[post("/schedules/:schedule_id/toggle")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Enable or disable an Autocron schedule",
         tag = "Autocron",
@@ -129,6 +133,7 @@ impl AutocronController {
     }
 
     #[post("/webhooks/:schedule_id")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
     #[api(
         summary = "Invoke a webhook-triggered Autocron schedule",
         tag = "Autocron",

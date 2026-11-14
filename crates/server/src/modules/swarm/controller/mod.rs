@@ -11,7 +11,7 @@ use crate::{
     modules::{
         auth::{
             entities::AuthenticatedActor,
-            guards::{AuthGuard, CurrentActor, require_scope},
+            guards::{AuthGuard, CurrentActor, ScopeGuard, require_scope},
         },
         swarm::{
             dto::{
@@ -33,6 +33,7 @@ pub struct SwarmController {
 #[routes]
 impl SwarmController {
     #[post("/:session_id/swarm/handoffs")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Create subagent handoff with narrowed permissions",
         tag = "Swarm",
@@ -61,6 +62,7 @@ impl SwarmController {
     }
 
     #[get("/:session_id/swarm/handoffs")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List session swarm handoffs",
         tag = "Swarm",
@@ -82,6 +84,7 @@ impl SwarmController {
     }
 
     #[post("/:session_id/swarm/messages")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Send signed or mediated swarm message",
         tag = "Swarm",
@@ -107,6 +110,7 @@ impl SwarmController {
     }
 
     #[get("/:session_id/swarm/messages")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "List session swarm messages",
         tag = "Swarm",
@@ -128,6 +132,7 @@ impl SwarmController {
     }
 
     #[post("/:session_id/swarm/blackboard")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Write))]
     #[api(
         summary = "Write Valkey shared blackboard key",
         tag = "Swarm",
@@ -159,6 +164,7 @@ impl SwarmController {
     }
 
     #[get("/:session_id/swarm/blackboard/:key")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
     #[api(
         summary = "Read Valkey shared blackboard key",
         tag = "Swarm",
