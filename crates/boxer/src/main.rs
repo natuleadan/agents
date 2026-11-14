@@ -35,10 +35,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let ts_layer = TimeSeriesConfig::default()
         .with_storage(Arc::new(FileLogStorage::new(&boxer_log_dir)))
         .layer();
-    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let ts_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let fmt_filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
     let _ = tracing_subscriber::registry()
-        .with(ts_layer)
-        .with(tracing_subscriber::fmt::layer().with_filter(filter))
+        .with(ts_layer.with_filter(ts_filter))
+        .with(tracing_subscriber::fmt::layer().with_filter(fmt_filter))
         .try_init();
 
     let cli = BoxerCli::parse();
