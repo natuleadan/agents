@@ -103,7 +103,7 @@ fi
 if [[ -d "${LOG_DIR}" ]]; then
   pass "Log directory exists: ${LOG_DIR}"
   ROOT_KB=$(df -k / | awk 'NR==2 {print $2}')
-  MAX_ALLOWED_KB=$(( ROOT_KB / 10 ))
+  MAX_ALLOWED_KB=$((ROOT_KB / 10))
   CURRENT_KB=$(du -sk "${LOG_DIR}" 2>/dev/null | awk '{print $1}')
   if [[ "${CURRENT_KB}" -le "${MAX_ALLOWED_KB}" ]]; then
     pass "Log usage (${CURRENT_KB} KB) within 10% disk capacity cap (${MAX_ALLOWED_KB} KB)"

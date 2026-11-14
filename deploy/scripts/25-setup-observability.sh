@@ -54,8 +54,8 @@ echo "[INFO] Configuring Agents Observability & Retention (OTEL=${ENABLE_OTEL}, 
 
 # Calculate filesystem capacity
 ROOT_FS_KB=$(df -k / | awk 'NR==2 {print $2}')
-MAX_LOG_KB=$(( ROOT_FS_KB * MAX_DISK_PERCENT / 100 ))
-MAX_LOG_MB=$(( MAX_LOG_KB / 1024 ))
+MAX_LOG_KB=$((ROOT_FS_KB * MAX_DISK_PERCENT / 100))
+MAX_LOG_MB=$((MAX_LOG_KB / 1024))
 echo "[INFO] Filesystem total: ${ROOT_FS_KB} KB. Calculated ${MAX_DISK_PERCENT}% quota: ${MAX_LOG_MB} MB."
 
 if [[ "${DRY_RUN}" != "1" && "$(id -u)" -ne 0 ]]; then
@@ -80,13 +80,13 @@ chmod 750 "${LOG_DIR}"
 # Update environment file if present
 if [[ -f "${ENV_FILE}" ]]; then
   sed -i '/^AGENTS_LOG_DIR=/d' "${ENV_FILE}"
-  echo "AGENTS_LOG_DIR=${LOG_DIR}" >> "${ENV_FILE}"
+  echo "AGENTS_LOG_DIR=${LOG_DIR}" >>"${ENV_FILE}"
 
   if [[ "${ENABLE_OTEL}" == "1" ]]; then
     sed -i '/^AGENTS_OTEL_ENDPOINT=/d' "${ENV_FILE}"
     sed -i '/^OTLP_ENDPOINT=/d' "${ENV_FILE}"
-    echo "AGENTS_OTEL_ENDPOINT=${OTEL_ENDPOINT}" >> "${ENV_FILE}"
-    echo "OTLP_ENDPOINT=${OTEL_ENDPOINT}" >> "${ENV_FILE}"
+    echo "AGENTS_OTEL_ENDPOINT=${OTEL_ENDPOINT}" >>"${ENV_FILE}"
+    echo "OTLP_ENDPOINT=${OTEL_ENDPOINT}" >>"${ENV_FILE}"
     echo "[INFO] Configured OTLP endpoint: ${OTEL_ENDPOINT}"
   else
     sed -i '/^AGENTS_OTEL_ENDPOINT=/d' "${ENV_FILE}"
@@ -96,7 +96,7 @@ if [[ -f "${ENV_FILE}" ]]; then
 fi
 
 # Install daily log retention & disk quota pruning script
-cat > /usr/local/bin/agents-log-prune <<PRUNE_EOF
+cat >/usr/local/bin/agents-log-prune <<PRUNE_EOF
 #!/usr/bin/env bash
 set -euo pipefail
 # Prune logs older than ${RETENTION_DAYS} days or exceeding ${MAX_DISK_PERCENT}% disk cap
