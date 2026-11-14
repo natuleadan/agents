@@ -317,3 +317,140 @@ fn anti_regression_source_level_rules() {
     assert!(Path::new("../../deploy/scripts/25-setup-observability.sh").exists());
     assert!(Path::new("../../deploy/scripts/95-validate-metrics.sh").exists());
 }
+
+#[tokio::test]
+async fn anti_regression_jsonl_log_storage_query_and_blob_archive() {
+    use agents_server::infra::{
+        adapters::{BlobStorePort, LocalFsBlobStore},
+        observability::{SystemLogQueryDto, archive_logs_to_blob, query_jsonl_logs},
+    };
+    use ironic::logging::{FileLogStorage, LogEntry, LogStorage};
+    use std::collections::BTreeMap;
+
+    let tmp = std::env::temp_dir().join(format!("obs_test_{}", uuid::Uuid::new_v4()));
+    let log_dir = tmp.join("logs");
+    let blob_dir = tmp.join("blobs");
+    std::fs::create_dir_all(&log_dir).unwrap();
+
+    let storage = FileLogStorage::new(&log_dir);
+    let mut fields = BTreeMap::new();
+    fields.insert(
+        "trace_id".to_owned(),
+        serde_json::json!("4bf92f3577b34da6a3ce929d0e0e4736"),
+    );
+
+    storage
+        .store(LogEntry {
+            timestamp: chrono::Utc::now(),
+            level: "ERROR".to_owned(),
+            target: "agents_server::mcp".to_owned(),
+            message: "mcp dispatch failure".to_owned(),
+            module_path: None,
+            file: None,
+            line: None,
+            fields,
+        })
+        .await
+        .unwrap();
+    storage
+        .store(LogEntry {
+            timestamp: chrono::Utc::now(),
+            level: "INFO".to_owned(),
+            target: "agents_server::health".to_owned(),
+            message: "health ok".to_owned(),
+            module_path: None,
+            file: None,
+            line: None,
+            fields: BTreeMap::new(),
+        })
+        .await
+        .unwrap();
+    storage.flush().await.unwrap();
+
+    let res = query_jsonl_logs(
+        &log_dir,
+        &SystemLogQueryDto {
+            level: Some("ERROR".to_owned()),
+            target: Some("mcp".to_owned()),
+            q: Some("4bf92f3577b34da6a3ce929d0e0e4736".to_owned()),
+            limit: Some(10),
+        },
+    );
+    assert_eq!(res.total, 1, "expected exactly 1 matching ERROR entry");
+    assert_eq!(res.logs[0]["message"], "mcp dispatch failure");
+
+    let blob = LocalFsBlobStore::new(blob_dir);
+    let archived = archive_logs_to_blob(&log_dir, &blob).await;
+    assert_eq!(archived, 1, "expected 1 JSONL file archived to blob store");
+    let date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+    let stored = blob
+        .get_blob(&format!("observability/logs/{date}.jsonl"))
+        .await
+        .unwrap();
+    assert!(
+        !stored.is_empty(),
+        "archived JSONL must exist in blob store"
+    );
+
+    let _ = std::fs::remove_dir_all(&tmp);
+}
+
+#[tokio::test]
+async fn anti_regression_system_logs_endpoint_requires_admin_and_returns_schema() {
+    let mut cfg = ServerConfig::for_tests();
+    cfg.admin_email = Some("admin@example.com".to_owned());
+    cfg.admin_initial_password = Some("admin-secret-password-99".to_owned());
+    let harness = build_test_harness(cfg).await;
+
+    let unauth = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit/system-logs")
+        .body(Body::empty())
+        .unwrap();
+    let resp_unauth = harness.router.clone().oneshot(unauth).await.unwrap();
+    assert_eq!(resp_unauth.status(), StatusCode::UNAUTHORIZED);
+
+    let (_, member_token) = register_and_login(
+        &harness.router,
+        "obs-member@example.com",
+        "ObsMemberPass123456!",
+    )
+    .await;
+
+    let forbidden = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit/system-logs")
+        .header("authorization", format!("Bearer {member_token}"))
+        .body(Body::empty())
+        .unwrap();
+    let resp_forbidden = harness.router.clone().oneshot(forbidden).await.unwrap();
+    assert_eq!(resp_forbidden.status(), StatusCode::FORBIDDEN);
+
+    let (login_status, tokens) = send_json(
+        &harness.router,
+        Method::POST,
+        "/api/v1/auth/login",
+        None,
+        Some(serde_json::json!({
+            "email": "admin@example.com",
+            "password": "admin-secret-password-99"
+        })),
+    )
+    .await;
+    assert_eq!(login_status, StatusCode::OK);
+    let admin_token = tokens["accessToken"].as_str().unwrap();
+
+    let req = Request::builder()
+        .method(Method::GET)
+        .uri("/api/v1/audit/system-logs?level=ERROR&limit=20")
+        .header("authorization", format!("Bearer {admin_token}"))
+        .body(Body::empty())
+        .unwrap();
+    let resp = harness.router.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let val: Value = serde_json::from_slice(&bytes).unwrap();
+    assert!(val["logs"].is_array());
+    assert!(val["total"].is_number());
+    assert!(val["log_dir"].is_string());
+}

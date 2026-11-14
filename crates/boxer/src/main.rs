@@ -13,17 +13,33 @@ use agents_boxer::{
     leases::HttpServerLeaseClient,
 };
 use clap::Parser;
+use ironic::logging::{FileLogStorage, TimeSeriesConfig};
 use tracing::info;
-use tracing_subscriber::EnvFilter;
+use tracing_subscriber::{EnvFilter, Layer, layer::SubscriberExt, util::SubscriberInitExt};
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let _ = dotenvy::dotenv();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info")),
-        )
-        .init();
+    let boxer_log_dir = std::env::var("AGENTS_BOXER_LOG_DIR")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| {
+            if let Ok(base) = std::env::var("AGENTS_LOG_DIR") {
+                std::path::PathBuf::from(base).join("boxer")
+            } else if std::path::Path::new("/var/log/agents").is_dir() {
+                std::path::PathBuf::from("/var/log/agents/boxer")
+            } else {
+                std::path::PathBuf::from(".logs/boxer")
+            }
+        });
+    let _ = std::fs::create_dir_all(&boxer_log_dir);
+    let ts_layer = TimeSeriesConfig::default()
+        .with_storage(Arc::new(FileLogStorage::new(&boxer_log_dir)))
+        .layer();
+    let filter = EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new("info"));
+    let _ = tracing_subscriber::registry()
+        .with(ts_layer)
+        .with(tracing_subscriber::fmt::layer().with_filter(filter))
+        .try_init();
 
     let cli = BoxerCli::parse();
     let cfg = Arc::new(BoxerConfig::from_cli(cli)?);

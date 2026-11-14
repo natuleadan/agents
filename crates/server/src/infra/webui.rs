@@ -99,13 +99,28 @@ pub fn mount_native_stream_and_mcp_routes(
 }
 
 async fn dispatch_lazy_mcp(req: AxumRequest<Body>, cell: Arc<OnceLock<McpHttpState>>) -> Response {
+    let started = std::time::Instant::now();
+    let method = req.method().clone();
     let Some(state) = cell.get() else {
+        tracing::warn!(target: "agents.mcp.access", method = %method, "MCP endpoint called before initialization");
         return (StatusCode::SERVICE_UNAVAILABLE, "mcp initializing").into_response();
     };
     let sub_router = protected_mcp_router(state.clone());
     match sub_router.oneshot(req).await {
-        Ok(resp) => resp,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
+        Ok(resp) => {
+            let duration_ms = started.elapsed().as_millis();
+            let status = resp.status().as_u16();
+            if resp.status().is_server_error() {
+                tracing::error!(target: "agents.mcp.access", method = %method, status, duration_ms, "mcp request failed");
+            } else {
+                tracing::info!(target: "agents.mcp.access", method = %method, status, duration_ms, "mcp request completed");
+            }
+            resp
+        }
+        Err(err) => {
+            tracing::error!(target: "agents.mcp.access", method = %method, error = %err, "mcp sub-router dispatch failed");
+            StatusCode::INTERNAL_SERVER_ERROR.into_response()
+        }
     }
 }
 

@@ -7,10 +7,14 @@ use ironic::{
     services::scheduling::{ScheduledTask, interval},
 };
 
-use crate::infra::error::ServerError;
+use crate::infra::{
+    adapters::BlobStoreClient,
+    error::ServerError,
+    observability::{LoggingConfig, archive_logs_to_blob},
+};
 
 /// Spawns a periodic background worker enforcing [`AuditService::prune_expired`] retention
-/// via Ironic's cooperative [`ScheduledTask`] scheduler.
+/// and archiving JSONL observability logs via Ironic's cooperative [`ScheduledTask`] scheduler.
 ///
 /// # Errors
 ///
@@ -24,9 +28,11 @@ pub async fn start_retention_worker(
         .resolve::<crate::modules::audit::services::AuditService>()
         .await
         .map_err(|e| ServerError::Internal(e.to_string()))?;
+    let blob = app.container().resolve::<BlobStoreClient>().await.ok();
 
     let task = interval(period, move || {
         let audit = Arc::clone(&audit);
+        let blob = blob.clone();
         async move {
             match audit.prune_expired().await {
                 Ok(pruned) if pruned > 0 => {
@@ -35,6 +41,13 @@ pub async fn start_retention_worker(
                 Ok(_) => {}
                 Err(err) => {
                     tracing::warn!(error = %err, "audit retention worker iteration failed");
+                }
+            }
+            if let Some(blob_client) = blob {
+                let log_dir = LoggingConfig::default().log_dir;
+                let archived = archive_logs_to_blob(&log_dir, blob_client.0.as_ref()).await;
+                if archived > 0 {
+                    tracing::info!(archived, "archived JSONL observability logs to blob store");
                 }
             }
         }
