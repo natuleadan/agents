@@ -58,7 +58,8 @@ impl EgressIdentityPolicy {
             .ok()
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty());
-        let strict = std::env::var("AGENTS_STRICT_EGRESS")
+        let strict = std::env::var("AGENTS_STRICT_OUTBOUND_EGRESS")
+            .or_else(|_| std::env::var("AGENTS_STRICT_EGRESS"))
             .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
             .unwrap_or(false);
 

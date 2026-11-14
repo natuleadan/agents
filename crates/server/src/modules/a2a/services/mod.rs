@@ -20,7 +20,10 @@ use serde_json::{Value, json};
 use tracing::info;
 
 use crate::{
-    infra::{error::ServerError, events::AppEventBus},
+    infra::{
+        error::ServerError,
+        events::{A2aInboundTaskEvent, AppEventBus},
+    },
     modules::identity::services::{IdentityService, OutboundInteractionRecord},
 };
 
@@ -319,12 +322,28 @@ impl A2aService {
         match self
             .store
             .0
-            .save_task(task, caller_org, caller_installation_id)
+            .save_task(task, caller_org.clone(), caller_installation_id.clone())
             .await
         {
             Ok(saved) => {
-                let _ = &self.events;
-                info!(target: "agents.a2a.intake", task_id = %saved.id, "accepted inbound A2A task");
+                let _ = self
+                    .events
+                    .publish(A2aInboundTaskEvent {
+                        task_id: saved.id.clone(),
+                        context_id: saved.context_id.clone(),
+                        caller_org: caller_org.clone(),
+                        caller_installation_id: caller_installation_id.clone(),
+                        received_at: u64::try_from(Utc::now().timestamp()).unwrap_or(0),
+                    })
+                    .await;
+                info!(
+                    target: "agents.a2a.intake",
+                    task_id = %saved.id,
+                    context_id = %saved.context_id,
+                    caller_org = ?caller_org,
+                    caller_installation_id = ?caller_installation_id,
+                    "accepted inbound A2A task"
+                );
                 let result = serde_json::to_value(&saved).unwrap_or_else(|_| json!({}));
                 JsonRpcResponse::success(id, result)
             }
