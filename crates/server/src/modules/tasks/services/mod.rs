@@ -14,6 +14,7 @@ use crate::{
     infra::{
         config::ServerConfig,
         error::ServerError,
+        events::{AppEventBus, TaskCompletedEvent},
         state::now_ms,
         stream::{AdmissionStore, BusClient, StreamStore, emit_stream_event},
     },
@@ -43,6 +44,7 @@ pub struct TaskService {
     admission: Arc<AdmissionStore>,
     config: Arc<ServerConfig>,
     audit: Arc<AuditService>,
+    events: Arc<AppEventBus>,
 }
 
 impl TaskService {
@@ -362,6 +364,17 @@ impl TaskService {
             },
         )
         .await;
+
+        let _ = self
+            .events
+            .publish(TaskCompletedEvent {
+                task_id: updated.id.clone(),
+                session_id: updated.session_id.clone(),
+                status: format!("{:?}", updated.state),
+                completed_at: now_ms(),
+            })
+            .await;
+
         Ok(updated)
     }
 

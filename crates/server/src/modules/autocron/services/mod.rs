@@ -12,6 +12,7 @@ use serde_json::{Value, json};
 use crate::{
     infra::{
         error::ServerError,
+        events::{AppEventBus, AutocronTickEvent},
         state::now_ms,
         stream::{BusClient, StreamStore, emit_stream_event},
     },
@@ -35,6 +36,7 @@ pub struct AutocronService {
     streams: Arc<StreamStore>,
     bus: Arc<BusClient>,
     audit: Arc<AuditService>,
+    events: Arc<AppEventBus>,
 }
 
 impl AutocronService {
@@ -333,6 +335,15 @@ impl AutocronService {
             .max_budget_usd_cents
             .map(|cap| cap.saturating_sub(updated.spent_budget_usd_cents));
 
+        let _ = self
+            .events
+            .publish(AutocronTickEvent {
+                schedule_id: updated.schedule_id.clone(),
+                workflow_id: updated.workflow_id.clone(),
+                tick_at: now,
+            })
+            .await;
+
         Ok(AutocronTickOutcome {
             schedule_id: updated.schedule_id,
             workflow_id: updated.workflow_id,
@@ -341,5 +352,38 @@ impl AutocronService {
             ambient_dispatched: updated.ambient_mode,
             remaining_budget_cents,
         })
+    }
+
+    /// Starts a cooperative background tick worker using Ironic's native [`interval`] scheduler.
+    pub fn start_scheduled_runner(
+        self: &Arc<Self>,
+        period: std::time::Duration,
+        boot_id: String,
+    ) -> ironic::services::scheduling::ScheduledTask {
+        let service = Arc::clone(self);
+        ironic::services::scheduling::interval(period, move || {
+            let svc = Arc::clone(&service);
+            let b_id = boot_id.clone();
+            async move {
+                let _ = svc.tick_due_schedules(&b_id, now_ms()).await;
+            }
+        })
+    }
+
+    /// Registers a cron schedule using Ironic's native [`cron_schedule`].
+    ///
+    /// # Errors
+    ///
+    /// Returns an error string if the cron expression cannot be parsed.
+    pub fn start_cron_job<F, Fut>(
+        &self,
+        expression: &str,
+        task: F,
+    ) -> Result<ironic::services::scheduling::ScheduledTask, String>
+    where
+        F: Fn() -> Fut + Send + Sync + 'static,
+        Fut: std::future::Future<Output = ()> + Send + 'static,
+    {
+        ironic::services::scheduling::cron_schedule(expression, task)
     }
 }

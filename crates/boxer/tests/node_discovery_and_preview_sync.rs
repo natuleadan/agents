@@ -45,6 +45,8 @@ fn test_config() -> Result<BoxerConfig, Box<dyn std::error::Error>> {
         strict_native_isolation: true,
         upstash_box_token: None,
         deepinfra_token: None,
+        http_port: 9091,
+        cluster_secret: "dev-boxer-cluster-secret".to_owned(),
     })
 }
 

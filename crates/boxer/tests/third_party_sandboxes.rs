@@ -109,6 +109,8 @@ fn build_sandbox_driver_provisions_third_party_adapters() {
         traefik_default_ttl_secs: 900,
         upstash_box_token: Some("box-tok".into()),
         deepinfra_token: Some("deep-tok".into()),
+        http_port: 9091,
+        cluster_secret: "dev-boxer-cluster-secret".into(),
     })
     .expect("config");
 

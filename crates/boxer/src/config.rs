@@ -107,6 +107,16 @@ pub struct BoxerCli {
 
     #[arg(long, env = "DEEPINFRA_TOKEN")]
     pub deepinfra_token: Option<String>,
+
+    #[arg(long, env = "BOXER_HTTP_PORT", default_value_t = 9091)]
+    pub http_port: u16,
+
+    #[arg(
+        long,
+        env = "BOXER_CLUSTER_SECRET",
+        default_value = "dev-boxer-cluster-secret"
+    )]
+    pub cluster_secret: String,
 }
 
 /// Validated runtime configuration consumed by Boxer subsystems.
@@ -136,6 +146,8 @@ pub struct BoxerConfig {
     pub strict_native_isolation: bool,
     pub upstash_box_token: Option<String>,
     pub deepinfra_token: Option<String>,
+    pub http_port: u16,
+    pub cluster_secret: String,
 }
 
 impl BoxerConfig {
@@ -201,6 +213,8 @@ impl BoxerConfig {
             strict_native_isolation,
             upstash_box_token,
             deepinfra_token,
+            http_port: cli.http_port,
+            cluster_secret: cli.cluster_secret,
         };
         cfg.validate()?;
         Ok(cfg)
