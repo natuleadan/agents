@@ -184,7 +184,6 @@ impl IdentityService {
 
         self.store.0.append_ledger(entry.clone()).await?;
         info!(
-            target: "agents.identity.ledger",
             direction = "inbound",
             protocol = %entry.protocol,
             verification_status = %entry.verification_status,
@@ -265,7 +264,6 @@ impl IdentityService {
         };
         self.store.0.append_ledger(entry.clone()).await?;
         info!(
-            target: "agents.identity.ledger",
             direction = "outbound",
             protocol = %entry.protocol,
             verification_status = %entry.verification_status,

@@ -337,7 +337,6 @@ impl A2aService {
                     })
                     .await;
                 info!(
-                    target: "agents.a2a.intake",
                     task_id = %saved.id,
                     context_id = %saved.context_id,
                     caller_org = ?caller_org,
