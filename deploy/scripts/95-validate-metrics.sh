@@ -2,7 +2,7 @@
 set -euo pipefail
 
 # Non-destructive audit for Prometheus metrics, W3C tracing, health probes, and log retention.
-SERVER_URL="${AGENTS_SERVER_URL:-http://127.0.0.1:3000}"
+SERVER_URL="${AGENTS_SERVER_URL:-http://127.0.0.1:8080}"
 BOXER_URL="${AGENTS_BOXER_URL:-http://127.0.0.1:9091}"
 LOG_DIR="${AGENTS_LOG_DIR:-/var/log/agents}"
 FAILURES=0
@@ -88,15 +88,15 @@ else
 fi
 
 # 6. Audit gzip compression
-if curl -sf --max-time 3 -H "Accept-Encoding: gzip" -I "${SERVER_URL}/openapi.json" >/dev/null 2>&1; then
-  ENC=$(curl -s -H "Accept-Encoding: gzip" -I --max-time 3 "${SERVER_URL}/openapi.json" | grep -i '^content-encoding:' || true)
+if curl -sf --max-time 3 -H "Accept-Encoding: gzip" -I "${SERVER_URL}/metrics" >/dev/null 2>&1; then
+  ENC=$(curl -s -H "Accept-Encoding: gzip" -I --max-time 3 "${SERVER_URL}/metrics" | grep -i '^content-encoding:' || true)
   if echo "${ENC}" | grep -qi "gzip"; then
     pass "agents-server returns Content-Encoding: gzip on Accept-Encoding: gzip"
   else
     fail "agents-server response not compressed with gzip"
   fi
 else
-  skip "agents-server /openapi.json not reachable for compression audit"
+  skip "agents-server /metrics not reachable for compression audit"
 fi
 
 # 7. Audit log directory and retention bounds
