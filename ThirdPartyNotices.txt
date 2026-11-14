@@ -38,6 +38,7 @@ serde_json (cargo)                     1.0.154  MIT OR Apache-2.0         https:
 sha2 (cargo)                           0.10.9   MIT OR Apache-2.0         https://github.com/RustCrypto/hashes
 sqlx (cargo)                           0.9.0    MIT OR Apache-2.0         https://github.com/launchbadge/sqlx
 subtle (cargo)                         2.6.1    BSD-3-Clause              https://github.com/dalek-cryptography/subtle
+tempfile (cargo)                       3.27.0   MIT OR Apache-2.0         https://github.com/Stebalien/tempfile
 thiserror (cargo)                      2.0.21   MIT OR Apache-2.0         https://github.com/dtolnay/thiserror
 tokio (cargo)                          1.54.1   MIT                       https://github.com/tokio-rs/tokio
 tokio-tungstenite (cargo)              0.29.0   MIT                       https://github.com/snapview/tokio-tungstenite
@@ -322,7 +323,7 @@ DEALINGS IN THE SOFTWARE.
 
 ==================================================
   Apache License
-  Applies to: base64 (cargo), rustls (cargo), uuid (cargo)
+  Applies to: base64 (cargo), rustls (cargo), tempfile (cargo), uuid (cargo)
 ==================================================
 
 Apache License

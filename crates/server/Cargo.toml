@@ -42,6 +42,10 @@ ironic = { version = "1.3.0", features = [
     "logging",
     "uuid",
     "serialization",
+    "scheduling",
+    "cron",
+    "cache",
+    "events",
 ] }
 jsonwebtoken = "9"
 redis = { version = "1.3", default-features = false, features = ["aio", "tokio-comp", "connection-manager", "script", "tokio-rustls-comp"] }

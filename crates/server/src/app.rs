@@ -31,9 +31,11 @@ use crate::{
         },
         admission::AdmissionController,
         bus::MessageBus,
+        cache::AppCache,
         config::ServerConfig,
         db::{BusHealthIndicator, Database, PostgresHealthIndicator, StateHealthIndicator},
         error::ServerError,
+        events::AppEventBus,
         state::StateBackend,
         stream::{
             AdmissionStore, BusClient, InMemoryStreamRepository, PgStreamRepository, StreamStore,
@@ -92,6 +94,8 @@ impl Module for InfraModule {
     fn definition() -> ModuleDefinition {
         ModuleDefinition::builder::<Self>()
             .provider(ProviderDefinition::value(ServerConfig::for_tests()))
+            .provider(ProviderDefinition::value(AppCache::default()))
+            .provider(ProviderDefinition::value(AppEventBus::default()))
             .provider(ProviderDefinition::value(StateStore::default()))
             .provider(ProviderDefinition::value(BusClient::default()))
             .provider(ProviderDefinition::value(VectorStoreClient::default()))
@@ -107,6 +111,8 @@ impl Module for InfraModule {
             .provider(ProviderDefinition::value(WorkflowStore::default()))
             .provider(ProviderDefinition::value(AutocronStore::default()))
             .export::<ServerConfig>()
+            .export::<AppCache>()
+            .export::<AppEventBus>()
             .export::<StateStore>()
             .export::<BusClient>()
             .export::<VectorStoreClient>()

@@ -1,13 +1,18 @@
 //! Session service enforcing ownership (BOLA prevention), optimistic concurrency, and drafts.
 
-use std::sync::Arc;
+use std::{sync::Arc, time::Duration};
 
 use agents_protocol::{CursorPage, InteractionMode};
 use ironic::prelude::*;
 use serde_json::json;
 
 use crate::{
-    infra::{error::ServerError, state::now_ms},
+    infra::{
+        cache::AppCache,
+        error::ServerError,
+        events::{AppEventBus, SessionCreatedEvent, SessionUpdatedEvent},
+        state::now_ms,
+    },
     modules::{
         audit::services::AuditService,
         auth::{entities::AuthenticatedActor, guards::ensure_owner, services::StateStore},
@@ -25,6 +30,8 @@ pub struct SessionService {
     store: Arc<SessionStore>,
     state: Arc<StateStore>,
     audit: Arc<AuditService>,
+    cache: Arc<AppCache>,
+    events: Arc<AppEventBus>,
 }
 
 impl SessionService {
@@ -52,6 +59,22 @@ impl SessionService {
             updated_at: now,
         };
         let created = self.store.0.create(session).await?;
+        self.cache
+            .set_json(
+                &format!("session:{}", created.id),
+                &created,
+                Duration::from_secs(60),
+            )
+            .await;
+        let _ = self
+            .events
+            .publish(SessionCreatedEvent {
+                session_id: created.id.clone(),
+                user_id: actor.user_id.clone(),
+                mode: format!("{:?}", created.mode),
+                created_at: now,
+            })
+            .await;
         let _ = self
             .audit
             .record(
@@ -94,6 +117,16 @@ impl SessionService {
         actor: &AuthenticatedActor,
         session_id: &str,
     ) -> Result<SessionEntity, ServerError> {
+        let cache_key = format!("session:{session_id}");
+        if let Some(cached) = self.cache.get_json::<SessionEntity>(&cache_key).await {
+            if ensure_owner(actor, &cached.owner_id).is_err() {
+                return Err(ServerError::Forbidden(
+                    "access denied: caller does not own this session".into(),
+                ));
+            }
+            return Ok(cached);
+        }
+
         let session =
             self.store.0.find_by_id(session_id).await?.ok_or_else(|| {
                 ServerError::NotFound(format!("session `{session_id}` not found"))
@@ -115,6 +148,9 @@ impl SessionService {
                 "access denied: caller does not own this session".into(),
             ));
         }
+        self.cache
+            .set_json(&cache_key, &session, Duration::from_secs(60))
+            .await;
         Ok(session)
     }
 
@@ -142,7 +178,18 @@ impl SessionService {
         }
         session.version = session.version.saturating_add(1);
         session.updated_at = now;
-        self.store.0.update(session, dto.expected_version).await
+        let updated = self.store.0.update(session, dto.expected_version).await?;
+        self.cache.remove(&format!("session:{session_id}")).await;
+        let _ = self
+            .events
+            .publish(SessionUpdatedEvent {
+                session_id: updated.id.clone(),
+                user_id: actor.user_id.clone(),
+                status: "active".into(),
+                updated_at: now,
+            })
+            .await;
+        Ok(updated)
     }
 
     /// Saves an unsent prompt draft in both Valkey (fast cache) and PostgreSQL (durable).
@@ -206,6 +253,16 @@ impl SessionService {
                 "session `{session_id}` not found"
             )));
         }
+        self.cache.remove(&format!("session:{session_id}")).await;
+        let _ = self
+            .events
+            .publish(SessionUpdatedEvent {
+                session_id: session_id.to_owned(),
+                user_id: actor.user_id.clone(),
+                status: "deleted".into(),
+                updated_at: now_ms(),
+            })
+            .await;
         let _ = self
             .audit
             .record(

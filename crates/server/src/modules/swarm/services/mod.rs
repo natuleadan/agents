@@ -10,7 +10,13 @@ use sha2::{Digest, Sha256};
 use subtle::ConstantTimeEq;
 
 use crate::{
-    infra::{config::ServerConfig, error::ServerError, state::now_ms, stream::BusClient},
+    infra::{
+        config::ServerConfig,
+        error::ServerError,
+        events::{AppEventBus, SwarmPeerMessageEvent},
+        state::now_ms,
+        stream::BusClient,
+    },
     modules::{
         audit::services::AuditService,
         auth::{entities::AuthenticatedActor, services::StateStore},
@@ -32,6 +38,7 @@ pub struct SwarmService {
     bus: Arc<BusClient>,
     config: Arc<ServerConfig>,
     audit: Arc<AuditService>,
+    events: Arc<AppEventBus>,
 }
 
 impl SwarmService {
@@ -139,7 +146,7 @@ impl SwarmService {
             message_id: uuid::Uuid::new_v4().to_string(),
             session_id: session_id.to_owned(),
             from_agent_id: dto.from_agent_id.clone(),
-            to: topic,
+            to: topic.clone(),
             payload: dto.payload.clone(),
             permission_mask: dto.permission_mask.clone(),
             signature: String::new(),
@@ -175,7 +182,21 @@ impl SwarmService {
             mediated_by_user: Some(actor.user_id.clone()),
             emitted_at_ms: wire.emitted_at_ms,
         };
-        self.store.0.record_message(stored).await
+        let recorded = self.store.0.record_message(stored).await?;
+        let _ = self
+            .events
+            .publish(SwarmPeerMessageEvent {
+                swarm_id: session_id.to_owned(),
+                from_agent: recorded.from_agent_id.clone(),
+                to_agent: recorded
+                    .target_agent_id
+                    .clone()
+                    .unwrap_or_else(|| "broadcast".to_owned()),
+                topic: format!("{:?}", topic),
+                sent_at: recorded.emitted_at_ms,
+            })
+            .await;
+        Ok(recorded)
     }
 
     /// Lists swarm coordination messages for an owned session.
