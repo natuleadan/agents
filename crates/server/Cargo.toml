@@ -22,6 +22,7 @@ harness = false
 [dependencies]
 agents-protocol = { path = "../protocol", features = ["openapi"] }
 agents-styles = { path = "../styles" }
+a2a = { package = "a2a-lf", version = "0.4.2" }
 argon2 = "0.5"
 async-nats = "0.42"
 axum = { version = "0.8", features = ["ws"] }

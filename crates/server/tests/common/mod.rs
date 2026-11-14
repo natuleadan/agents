@@ -12,9 +12,11 @@ use agents_server::{
         stream::{InMemoryStreamRepository, StreamStore},
     },
     modules::{
+        a2a::repositories::{A2aTaskStore, InMemoryA2aRepository},
         audit::repositories::{AuditRepository, AuditStore, InMemoryAuditRepository},
         auth::repositories::{AuthRepository, AuthStore, InMemoryAuthRepository},
         autocron::repositories::{AutocronRepository, AutocronStore, InMemoryAutocronRepository},
+        identity::repositories::{IdentityStore, InMemoryIdentityRepository},
         sessions::repositories::{InMemorySessionRepository, SessionStore},
         swarm::repositories::{InMemorySwarmRepository, SwarmRepository, SwarmStore},
         tasks::repositories::{InMemoryTaskRepository, TaskRepository, TaskStore},
@@ -85,6 +87,8 @@ pub async fn build_test_harness_with_config(config: ServerConfig) -> TestHarness
         swarm_store: SwarmStore(Arc::clone(&swarm_repo) as Arc<dyn SwarmRepository>),
         workflow_store: WorkflowStore(Arc::clone(&workflow_repo) as Arc<dyn WorkflowRepository>),
         autocron_store: AutocronStore(Arc::clone(&autocron_repo) as Arc<dyn AutocronRepository>),
+        identity_store: IdentityStore(Arc::new(InMemoryIdentityRepository::default())),
+        a2a_store: A2aTaskStore(Arc::new(InMemoryA2aRepository::default())),
     };
 
     let app = build_application(infra)

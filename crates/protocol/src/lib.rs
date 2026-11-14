@@ -4,6 +4,7 @@
 
 pub mod artifact;
 pub mod auth;
+pub mod identity;
 pub mod node;
 pub mod preview;
 pub mod rpc;
@@ -22,6 +23,10 @@ pub use artifact::{ArtifactEntry, ArtifactManifest, ArtifactValidationError, is_
 pub use auth::{
     ApiKeyMetadata, ApiKeyScope, CreateApiKeyRequest, LoginRequest, RefreshRequest, TokenPair,
     UserClaims,
+};
+pub use identity::{
+    HEADER_AGENT_IDENTITY_CODE, HEADER_AGENT_INSTALLATION_ID, HEADER_AGENT_ORGANIZATION,
+    InstallationIdentityHeaders, is_valid_alphanumeric_id, is_valid_organization_name,
 };
 pub use node::{BoxerNodeAnnouncement, NodeStatus, PreviewRouteSync};
 pub use preview::TraefikPreviewRoute;

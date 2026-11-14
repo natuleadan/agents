@@ -6,8 +6,14 @@ use ironic::{HeaderName, HeaderValue, HttpStatus, prelude::*};
 
 use crate::{
     infra::error::ErrorResponse,
-    modules::workflows::{
-        dto::WebhookPayloadDto, entities::WorkflowRunEntity, services::WorkflowService,
+    modules::{
+        identity::{
+            entities::{InboundIdentityContext, InboundIdentityExtractor},
+            services::IdentityService,
+        },
+        workflows::{
+            dto::WebhookPayloadDto, entities::WorkflowRunEntity, services::WorkflowService,
+        },
     },
 };
 
@@ -16,6 +22,7 @@ use crate::{
 #[derive(Injectable)]
 pub struct WebhookIngressController {
     service: Arc<WorkflowService>,
+    identity: Arc<IdentityService>,
 }
 
 #[routes]
@@ -32,9 +39,21 @@ impl WebhookIngressController {
     #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn trigger_slug(
         &self,
+        #[decorator(InboundIdentityExtractor)] inbound: InboundIdentityContext,
         #[param] slug: String,
         #[body] dto: Option<WebhookPayloadDto>,
     ) -> Result<Json<WorkflowRunEntity>, HttpError> {
+        self.identity
+            .record_inbound(
+                "webhook",
+                &format!("/webhooks/{slug}"),
+                "POST",
+                &inbound.headers,
+                None,
+                serde_json::json!({ "slug": slug }),
+            )
+            .await?;
+
         let input = dto
             .and_then(|d| d.payload)
             .unwrap_or_else(|| serde_json::json!({}));

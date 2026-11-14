@@ -171,6 +171,20 @@ pub fn configure_openapi() -> OpenApiConfig {
         .schema::<MetricsScrapeResponse>("MetricsScrapeResponse")
         .schema::<PaginatedPageResponse>("PaginatedPageResponse")
         .schema::<crate::infra::observability::SystemLogsResponse>("SystemLogsResponse")
+        // Identity & A2A schemas
+        .schema::<crate::modules::identity::entities::InstallationIdentityRecord>(
+            "InstallationIdentityRecord",
+        )
+        .schema::<crate::modules::identity::entities::UpdateInstallationIdentityDto>(
+            "UpdateInstallationIdentityDto",
+        )
+        .schema::<crate::modules::identity::entities::AgentInteractionLedgerEntry>(
+            "AgentInteractionLedgerEntry",
+        )
+        .schema::<crate::modules::identity::entities::LedgerListResponse>("LedgerListResponse")
+        .schema::<crate::modules::a2a::services::OutboundA2aSendDto>("OutboundA2aSendDto")
+        .schema::<crate::modules::a2a::services::OutboundA2aResponse>("OutboundA2aResponse")
+        .schema::<crate::modules::a2a::controller::A2aRpcPayloadDto>("A2aRpcPayloadDto")
 }
 
 /// Health check detail for a single system dependency.
