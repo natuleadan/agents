@@ -100,6 +100,23 @@ fn build_paths() -> Value {
                 }
             }
         },
+        "/metrics": {
+            "get": {
+                "tags": ["System & Health"],
+                "summary": "Prometheus text metrics",
+                "description": "Returns Prometheus formatted metrics for Boxer supervisor and sandboxes.",
+                "responses": {
+                    "200": {
+                        "description": "Prometheus text metrics payload",
+                        "content": {
+                            "text/plain": {
+                                "schema": { "type": "string" }
+                            }
+                        }
+                    }
+                }
+            }
+        },
         "/v1/box": {
             "post": {
                 "tags": ["Sandboxes"],

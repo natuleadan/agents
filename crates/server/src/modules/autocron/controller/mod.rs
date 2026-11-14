@@ -6,7 +6,10 @@ use agents_protocol::ApiKeyScope;
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::{ErrorResponse, validate_dto},
+    infra::{
+        error::{ErrorResponse, validate_dto},
+        observability::PerRouteTimeoutInterceptor,
+    },
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -75,6 +78,7 @@ impl AutocronController {
 
     #[post("/schedules/:schedule_id/run")]
     #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
+    #[interceptor(PerRouteTimeoutInterceptor::secs(120))]
     #[api(
         summary = "Execute an Autocron schedule with budget enforcement",
         tag = "Autocron",
@@ -134,6 +138,7 @@ impl AutocronController {
 
     #[post("/webhooks/:schedule_id")]
     #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
+    #[interceptor(PerRouteTimeoutInterceptor::secs(120))]
     #[api(
         summary = "Invoke a webhook-triggered Autocron schedule",
         tag = "Autocron",

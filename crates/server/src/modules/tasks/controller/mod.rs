@@ -6,7 +6,10 @@ use agents_protocol::{ApiKeyScope, CursorPage, FollowUpMessage, SteeringMessage,
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::{ErrorResponse, validate_dto},
+    infra::{
+        error::{ErrorResponse, validate_dto},
+        observability::PerRouteTimeoutInterceptor,
+    },
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -193,6 +196,7 @@ impl TasksController {
 
     #[post("/tasks/:id/complete")]
     #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
+    #[interceptor(PerRouteTimeoutInterceptor::secs(120))]
     #[api(
         summary = "Complete fenced task execution",
         tag = "Tasks",

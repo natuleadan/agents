@@ -168,6 +168,8 @@ pub fn configure_openapi() -> OpenApiConfig {
         .schema::<CompositeHealthResponse>("CompositeHealthResponse")
         .schema::<LivenessResponse>("LivenessResponse")
         .schema::<SystemVersionResponse>("SystemVersionResponse")
+        .schema::<MetricsScrapeResponse>("MetricsScrapeResponse")
+        .schema::<PaginatedPageResponse>("PaginatedPageResponse")
 }
 
 /// Health check detail for a single system dependency.
@@ -202,6 +204,47 @@ pub struct SystemVersionResponse {
     pub version: String,
     /// Git commit revision hash.
     pub git_sha: String,
+}
+
+/// Prometheus text-format scrape response payload.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize, ironic::OpenApiSchema)]
+pub struct MetricsScrapeResponse {
+    /// Raw Prometheus metrics formatted text.
+    pub text: String,
+}
+
+/// Generic paginated page wrapper for Ironic paginated responses.
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct PaginatedPageResponse {
+    /// Items in current page.
+    pub items: Vec<serde_json::Value>,
+    /// Total count of items matching the query.
+    pub total: u64,
+    /// Current query offset.
+    pub offset: u64,
+    /// Maximum items per page requested or clamped.
+    pub limit: u64,
+}
+
+impl ironic::OpenApiSchema for PaginatedPageResponse {
+    fn openapi_schema() -> serde_json::Value {
+        serde_json::json!({
+            "type": "object",
+            "title": "PaginatedPageResponse",
+            "description": "Generic paginated response payload",
+            "properties": {
+                "items": {
+                    "type": "array",
+                    "description": "Page items",
+                    "items": { "type": "object" }
+                },
+                "total": { "type": "integer", "format": "int64" },
+                "offset": { "type": "integer", "format": "int64" },
+                "limit": { "type": "integer", "format": "int64" }
+            },
+            "required": ["items", "total", "offset", "limit"]
+        })
+    }
 }
 
 /// Enriches raw OpenAPI 3.1 specification with metadata, tags, and response schemas
@@ -323,6 +366,29 @@ pub fn enrich_openapi_spec(spec: &mut serde_json::Value) {
                 "200": {
                     "description": "Build and runtime version metadata",
                     "content": { "application/json": { "schema": { "$ref": "#/components/schemas/SystemVersionResponse" } } }
+                }
+            }),
+        );
+    }
+
+    if let Some(get_op) = paths
+        .get_mut("/metrics")
+        .and_then(serde_json::Value::as_object_mut)
+        .and_then(|v| v.get_mut("get"))
+        .and_then(serde_json::Value::as_object_mut)
+    {
+        get_op.insert("tags".into(), serde_json::json!(["System & Health"]));
+        get_op.insert("summary".into(), serde_json::json!("Prometheus metrics"));
+        get_op.insert(
+            "description".into(),
+            serde_json::json!("Returns framework, domain, and runtime Prometheus metrics."),
+        );
+        get_op.insert(
+            "responses".into(),
+            serde_json::json!({
+                "200": {
+                    "description": "Scraped Prometheus metrics payload",
+                    "content": { "application/json": { "schema": { "$ref": "#/components/schemas/MetricsScrapeResponse" } } }
                 }
             }),
         );

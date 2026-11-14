@@ -10,7 +10,14 @@ pub mod doctor;
 pub mod error;
 pub mod events;
 pub mod migrate;
+pub mod observability;
 pub mod state;
+
+pub use observability::{
+    DomainMetrics, LifecycleManager, LifecycleSnapshot, ObservabilityPlugin,
+    PerRouteTimeoutInterceptor, ProviderHealthIndicator, TraceContextMiddleware, W3cTraceContext,
+    apply_observability_plugins, inject_w3c_traceparent, slice_paginated,
+};
 pub mod stream;
 pub mod webui;
 pub mod workers;

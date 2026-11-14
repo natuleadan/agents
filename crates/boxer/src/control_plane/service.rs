@@ -3,7 +3,10 @@
 use std::{
     collections::HashMap,
     path::{Path, PathBuf},
-    sync::Arc,
+    sync::{
+        Arc,
+        atomic::{AtomicU64, Ordering},
+    },
 };
 
 use agents_protocol::{ExecOptions, SandboxProfile};
@@ -33,10 +36,20 @@ struct ActiveBox {
     created_at: u64,
 }
 
+/// Operational counters tracked across Boxer execution lifecycle.
+#[derive(Default)]
+pub struct BoxerMetricsSnapshot {
+    pub provisions_total: AtomicU64,
+    pub execs_total: AtomicU64,
+    pub teardowns_total: AtomicU64,
+    pub auth_failures_total: AtomicU64,
+}
+
 /// Service managing dynamic sandbox containers, command execution, and VFS file access.
 pub struct BoxerControlPlaneService {
     config: Arc<BoxerConfig>,
     boxes: Arc<RwLock<HashMap<String, ActiveBox>>>,
+    metrics: Arc<BoxerMetricsSnapshot>,
 }
 
 impl BoxerControlPlaneService {
@@ -46,7 +59,15 @@ impl BoxerControlPlaneService {
         Self {
             config,
             boxes: Arc::new(RwLock::new(HashMap::new())),
+            metrics: Arc::new(BoxerMetricsSnapshot::default()),
         }
+    }
+
+    /// Records an authorization failure event.
+    pub fn record_auth_failure(&self) {
+        self.metrics
+            .auth_failures_total
+            .fetch_add(1, Ordering::Relaxed);
     }
 
     /// Provisions a new sandbox container and initializes its confined workspace.
@@ -80,7 +101,18 @@ impl BoxerControlPlaneService {
             created_at: now,
         };
 
+        tracing::info!(
+            target: "boxer.lifecycle",
+            box_id = %box_id,
+            session_id = %active.session_id,
+            task_id = %active.task_id,
+            working_dir = %working_dir.display(),
+            "provisioned sandbox container"
+        );
         self.boxes.write().await.insert(box_id.clone(), active);
+        self.metrics
+            .provisions_total
+            .fetch_add(1, Ordering::Relaxed);
 
         Ok(ProvisionBoxResponse {
             box_id,
@@ -122,6 +154,15 @@ impl BoxerControlPlaneService {
         let start = now_ms();
         let outcome = active.driver.execute(exec_req, None, cancel_rx).await?;
         let duration_ms = now_ms().saturating_sub(start);
+        self.metrics.execs_total.fetch_add(1, Ordering::Relaxed);
+        tracing::info!(
+            target: "boxer.lifecycle",
+            box_id = %box_id,
+            exit_code = outcome.exit_code,
+            timed_out = outcome.timed_out,
+            duration_ms,
+            "executed command in sandbox"
+        );
 
         Ok(ExecBoxResponse {
             exit_code: outcome.exit_code,
@@ -205,6 +246,12 @@ impl BoxerControlPlaneService {
         };
 
         let _ = tokio::fs::remove_dir_all(&active.working_dir).await;
+        self.metrics.teardowns_total.fetch_add(1, Ordering::Relaxed);
+        tracing::info!(
+            target: "boxer.lifecycle",
+            box_id = %box_id,
+            "torn down sandbox container"
+        );
 
         Ok(TeardownBoxResponse {
             box_id: box_id.to_owned(),
@@ -221,6 +268,34 @@ impl BoxerControlPlaneService {
             active_boxes: active,
             max_concurrent_boxes: self.config.max_concurrent_boxes,
         }
+    }
+
+    /// Generates Prometheus-formatted text metrics including Boxer control-plane counters.
+    pub async fn metrics_prometheus(&self) -> String {
+        let active = self.boxes.read().await.len();
+        let provisions = self.metrics.provisions_total.load(Ordering::Relaxed);
+        let execs = self.metrics.execs_total.load(Ordering::Relaxed);
+        let teardowns = self.metrics.teardowns_total.load(Ordering::Relaxed);
+        let auth_fails = self.metrics.auth_failures_total.load(Ordering::Relaxed);
+        let mut out = ironic::metrics::scrape();
+        out.push_str(&format!(
+            "# HELP boxer_active_boxes Current active sandboxes\n\
+             # TYPE boxer_active_boxes gauge\n\
+             boxer_active_boxes {active}\n\
+             # HELP boxer_provisions_total Total sandbox containers provisioned\n\
+             # TYPE boxer_provisions_total counter\n\
+             boxer_provisions_total {provisions}\n\
+             # HELP boxer_execs_total Total commands executed in sandboxes\n\
+             # TYPE boxer_execs_total counter\n\
+             boxer_execs_total {execs}\n\
+             # HELP boxer_teardowns_total Total sandbox containers destroyed\n\
+             # TYPE boxer_teardowns_total counter\n\
+             boxer_teardowns_total {teardowns}\n\
+             # HELP boxer_auth_failures_total Total authentication failures\n\
+             # TYPE boxer_auth_failures_total counter\n\
+             boxer_auth_failures_total {auth_fails}\n"
+        ));
+        out
     }
 }
 

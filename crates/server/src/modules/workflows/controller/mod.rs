@@ -5,12 +5,15 @@ pub mod ingress;
 use std::sync::Arc;
 
 use agents_protocol::ApiKeyScope;
-use ironic::prelude::*;
+use ironic::{Pagination, Response, prelude::*};
 
 pub use ingress::{SlugRenderController, WebhookIngressController};
 
 use crate::{
-    infra::error::{ErrorResponse, validate_dto},
+    infra::{
+        error::{ErrorResponse, validate_dto},
+        observability::{PerRouteTimeoutInterceptor, slice_paginated},
+    },
     modules::{
         auth::{
             entities::AuthenticatedActor,
@@ -24,6 +27,7 @@ use crate::{
             services::WorkflowService,
         },
     },
+    openapi::PaginatedPageResponse,
 };
 
 #[controller("/api/v1/workflows")]
@@ -61,6 +65,7 @@ impl WorkflowsController {
 
     #[get("/")]
     #[guard(ScopeGuard::new(ApiKeyScope::Read))]
+    #[interceptor(PerRouteTimeoutInterceptor::secs(5))]
     #[api(
         summary = "List owned workflows",
         tag = "Workflows",
@@ -69,6 +74,7 @@ impl WorkflowsController {
     #[resp(200, "Workflow list", json = Vec<WorkflowEntity>)]
     #[resp(401, "Unauthorized", json = ErrorResponse)]
     #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(408, "Request timeout", json = ErrorResponse)]
     #[resp(500, "Internal server error", json = ErrorResponse)]
     async fn list(
         &self,
@@ -77,6 +83,30 @@ impl WorkflowsController {
         require_scope(&actor, ApiKeyScope::Read)?;
         let list = self.service.list_owned(&actor).await?;
         Ok(Json(list))
+    }
+
+    #[get("/page")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Read))]
+    #[interceptor(PerRouteTimeoutInterceptor::secs(5))]
+    #[api(
+        summary = "List owned workflows with native offset pagination",
+        tag = "Workflows",
+        security = "bearerAuth"
+    )]
+    #[resp(200, "Paginated workflows", json = PaginatedPageResponse)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Forbidden", json = ErrorResponse)]
+    #[resp(408, "Request timeout", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
+    async fn list_page(
+        &self,
+        #[decorator(CurrentActor)] actor: AuthenticatedActor,
+        #[decorator(Pagination)] page: Pagination,
+    ) -> Result<Response, HttpError> {
+        require_scope(&actor, ApiKeyScope::Read)?;
+        let list = self.service.list_owned(&actor).await?;
+        let (items, total) = slice_paginated(&list, page.offset(), page.limit());
+        Response::paginated(&items, total, page.offset(), page.limit())
     }
 
     #[post("/:workflow_id/approve")]
@@ -135,6 +165,7 @@ impl WorkflowsController {
 
     #[post("/:workflow_id/trigger")]
     #[guard(ScopeGuard::new(ApiKeyScope::Exec))]
+    #[interceptor(PerRouteTimeoutInterceptor::secs(120))]
     #[api(
         summary = "Execute workflow DAG manually",
         tag = "Workflows",

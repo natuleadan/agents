@@ -16,6 +16,7 @@ use agents_boxer::{
             ProvisionBoxRequest, ProvisionBoxResponse, ReadFileResponse, TeardownBoxResponse,
             WriteFileRequest,
         },
+        openapi::boxer_openapi_spec,
         start_autodiscovery_heartbeat,
     },
 };
@@ -23,6 +24,7 @@ use axum::{
     body::Body,
     http::{Request, StatusCode},
 };
+use http_body_util::BodyExt;
 use tower::ServiceExt;
 
 fn test_config() -> (Arc<BoxerConfig>, tempfile::TempDir) {
@@ -443,4 +445,48 @@ async fn anti_regression_boxer_signed_autodiscovery_heartbeat_delivery() {
         Some(64),
         "signed registration payload must contain 64-char HMAC-SHA256 hex digest"
     );
+}
+
+#[tokio::test]
+async fn anti_regression_boxer_observability_metrics_and_traceparent() {
+    let (cfg, _tmp) = test_config();
+    let service = Arc::new(BoxerControlPlaneService::new(Arc::clone(&cfg)));
+    let app = build_control_plane_router(Arc::clone(&service), &cfg);
+
+    // 1. GET /metrics returns text/plain and contains supervisor metrics
+    let req = Request::builder()
+        .method("GET")
+        .uri("/metrics")
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let bytes = resp.into_body().collect().await.unwrap().to_bytes();
+    let body_str = String::from_utf8_lossy(&bytes);
+    assert!(
+        body_str.contains("boxer_active_boxes") && body_str.contains("boxer_provisions_total"),
+        "metrics must include boxer counters"
+    );
+
+    // 2. Incoming request with traceparent preserves trace ID and injects x-request-id
+    let inbound_tp = "00-11223344556677889900aabbccddeeff-0123456789abcdef-01";
+    let req = Request::builder()
+        .method("GET")
+        .uri("/health/live")
+        .header("traceparent", inbound_tp)
+        .body(Body::empty())
+        .unwrap();
+    let resp = app.clone().oneshot(req).await.unwrap();
+    assert_eq!(resp.status(), StatusCode::OK);
+    let out_tp = resp
+        .headers()
+        .get("traceparent")
+        .and_then(|v| v.to_str().ok())
+        .unwrap();
+    assert_eq!(out_tp, inbound_tp);
+    assert!(resp.headers().contains_key("x-request-id"));
+
+    // 3. OpenAPI spec documents /metrics
+    let spec = boxer_openapi_spec();
+    assert!(spec["paths"]["/metrics"].is_object());
 }

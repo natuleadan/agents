@@ -48,6 +48,7 @@ pub fn build_control_plane_router(
         .route("/health/live", get(health_live_handler))
         .route("/health/ready", get(health_ready_handler))
         .route("/version", get(version_handler))
+        .route("/metrics", get(boxer_metrics_handler))
         // v1 routes (primary)
         .route("/v1/box", post(provision_box_handler))
         .route("/v1/box/{id}/exec", post(exec_box_handler))
@@ -66,6 +67,13 @@ pub fn build_control_plane_router(
             get(read_file_handler).post(write_file_handler),
         )
         .route("/v2/box/{id}", delete(teardown_box_handler))
+        .layer(axum::middleware::from_fn_with_state(
+            state.clone(),
+            boxer_observability_middleware,
+        ))
+        .layer(ironic::metrics::MetricsLayer::new(
+            ironic::metrics::MetricsConfig::default(),
+        ))
         .with_state(state);
 
     api_router
@@ -88,6 +96,78 @@ async fn boxer_openapi_handler() -> impl IntoResponse {
         [(axum::http::header::CONTENT_TYPE, "application/json")],
         spec.to_string(),
     )
+}
+
+async fn boxer_metrics_handler(State(state): State<ControlPlaneState>) -> impl IntoResponse {
+    let text = state.service.metrics_prometheus().await;
+    (
+        [(
+            axum::http::header::CONTENT_TYPE,
+            "text/plain; version=0.0.4; charset=utf-8",
+        )],
+        text,
+    )
+}
+
+async fn boxer_observability_middleware(
+    State(state): State<ControlPlaneState>,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> Response {
+    let start = std::time::Instant::now();
+    let method = req.method().clone();
+    let uri = req.uri().clone();
+
+    let request_id = req
+        .headers()
+        .get("x-request-id")
+        .and_then(|v| v.to_str().ok())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+
+    let traceparent = req
+        .headers()
+        .get("traceparent")
+        .and_then(|v| v.to_str().ok())
+        .map(ToOwned::to_owned)
+        .unwrap_or_else(|| {
+            format!(
+                "00-{:032x}-{:016x}-01",
+                uuid::Uuid::new_v4().as_u128(),
+                (uuid::Uuid::new_v4().as_u128() >> 64) as u64
+            )
+        });
+
+    let mut response = next.run(req).await;
+    let status = response.status();
+    let duration_ms = start.elapsed().as_millis();
+
+    if status == StatusCode::UNAUTHORIZED || status == StatusCode::FORBIDDEN {
+        state.service.record_auth_failure();
+    }
+
+    if let Ok(val) = axum::http::HeaderValue::from_str(&request_id) {
+        response
+            .headers_mut()
+            .insert(axum::http::HeaderName::from_static("x-request-id"), val);
+    }
+    if let Ok(val) = axum::http::HeaderValue::from_str(&traceparent) {
+        response
+            .headers_mut()
+            .insert(axum::http::HeaderName::from_static("traceparent"), val);
+    }
+
+    tracing::info!(
+        target: "boxer.http.access",
+        method = %method,
+        uri = %uri,
+        status = %status.as_u16(),
+        duration_ms,
+        traceparent = %traceparent,
+        "boxer http access"
+    );
+
+    response
 }
 
 fn verify_auth(
