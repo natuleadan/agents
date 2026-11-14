@@ -67,12 +67,10 @@ enum MigrateAction {
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     dotenvy::dotenv().ok();
-    tracing_subscriber::fmt()
-        .with_env_filter(
-            tracing_subscriber::EnvFilter::try_from_default_env()
-                .unwrap_or_else(|_| tracing_subscriber::EnvFilter::new("info")),
-        )
-        .init();
+    let log_cfg = agents_server::infra::observability::LoggingConfig::default();
+    let apm_cfg = agents_server::infra::observability::ApmConfig::from_env();
+    let _telemetry_guard =
+        agents_server::infra::observability::init_structured_logging(&log_cfg, &apm_cfg);
 
     let cli = Cli::parse();
     match cli.command.unwrap_or(Command::Serve) {

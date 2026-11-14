@@ -8,7 +8,10 @@ use ironic::{Pagination, Response, prelude::*};
 use crate::{
     infra::{
         error::{ErrorResponse, validate_dto},
-        observability::{PerRouteTimeoutInterceptor, slice_paginated},
+        observability::{
+            LoggingConfig, PerRouteTimeoutInterceptor, SystemLogQueryDto, SystemLogsResponse,
+            query_jsonl_logs, slice_paginated,
+        },
     },
     modules::{
         audit::{
@@ -102,5 +105,28 @@ impl AuditController {
         require_scope(&actor, ApiKeyScope::Admin)?;
         let report = self.service.verify_chain().await?;
         Ok(Json(report))
+    }
+
+    #[get("/system-logs")]
+    #[guard(ScopeGuard::new(ApiKeyScope::Admin))]
+    #[interceptor(PerRouteTimeoutInterceptor::secs(5))]
+    #[api(
+        summary = "Query structured JSONL system logs",
+        tag = "Audit",
+        security = "bearerAuth"
+    )]
+    #[resp(200, "Matching structured log entries", json = SystemLogsResponse)]
+    #[resp(401, "Unauthorized", json = ErrorResponse)]
+    #[resp(403, "Admin scope required", json = ErrorResponse)]
+    #[resp(408, "Request timeout", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
+    async fn system_logs(
+        &self,
+        #[decorator(CurrentActor)] actor: AuthenticatedActor,
+        #[query] query: SystemLogQueryDto,
+    ) -> Result<Json<SystemLogsResponse>, HttpError> {
+        require_scope(&actor, ApiKeyScope::Admin)?;
+        let cfg = LoggingConfig::default();
+        Ok(Json(query_jsonl_logs(&cfg.log_dir, &query)))
     }
 }

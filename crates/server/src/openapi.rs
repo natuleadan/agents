@@ -170,6 +170,7 @@ pub fn configure_openapi() -> OpenApiConfig {
         .schema::<SystemVersionResponse>("SystemVersionResponse")
         .schema::<MetricsScrapeResponse>("MetricsScrapeResponse")
         .schema::<PaginatedPageResponse>("PaginatedPageResponse")
+        .schema::<crate::infra::observability::SystemLogsResponse>("SystemLogsResponse")
 }
 
 /// Health check detail for a single system dependency.

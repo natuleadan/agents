@@ -13,7 +13,10 @@ pub mod tracing;
 pub use apm::ApmConfig;
 pub use health::ProviderHealthIndicator;
 pub use lifecycle::{LifecycleManager, LifecycleSnapshot};
-pub use logging::LoggingConfig;
+pub use logging::{
+    LoggingConfig, SystemLogQueryDto, SystemLogsResponse, archive_logs_to_blob,
+    init_structured_logging, query_jsonl_logs,
+};
 pub use metrics::DomainMetrics;
 pub use pagination::slice_paginated;
 pub use plugin::{ObservabilityPlugin, apply_observability_plugins};
