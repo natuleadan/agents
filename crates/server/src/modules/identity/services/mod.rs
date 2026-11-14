@@ -189,6 +189,9 @@ impl IdentityService {
             protocol = %entry.protocol,
             verification_status = %entry.verification_status,
             remote_org = ?entry.remote_org,
+            remote_installation_id = ?entry.remote_installation_id,
+            identity_code_present = entry.identity_code_present,
+            task_id = ?entry.task_id,
             endpoint = %entry.endpoint_path,
             "recorded inbound agent/webhook interaction"
         );
@@ -260,7 +263,22 @@ impl IdentityService {
             detail_json: json!({}),
             created_at: Utc::now().to_rfc3339(),
         };
-        self.store.0.append_ledger(entry).await
+        self.store.0.append_ledger(entry.clone()).await?;
+        info!(
+            target: "agents.identity.ledger",
+            direction = "outbound",
+            protocol = %entry.protocol,
+            verification_status = %entry.verification_status,
+            agent_org = ?entry.remote_org,
+            agent_installation_id = ?entry.remote_installation_id,
+            identity_code_present = entry.identity_code_present,
+            target_host = ?entry.target_host,
+            endpoint = %entry.endpoint_path,
+            status_code = ?entry.status_code,
+            task_id = ?entry.task_id,
+            "recorded outbound agent/webhook interaction"
+        );
+        Ok(())
     }
 
     /// Queries the indefinite agent interaction ledger.

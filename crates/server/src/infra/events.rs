@@ -59,6 +59,16 @@ pub struct AutocronTickEvent {
     pub tick_at: u64,
 }
 
+/// Emitted when an external A2A message is accepted by the orchestrator postal gateway.
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct A2aInboundTaskEvent {
+    pub task_id: String,
+    pub context_id: String,
+    pub caller_org: Option<String>,
+    pub caller_installation_id: Option<String>,
+    pub received_at: u64,
+}
+
 /// Thread-safe injectable domain event bus wrapping native [`ironic::services::events::EventBus`].
 #[derive(Clone, Default)]
 pub struct AppEventBus {
