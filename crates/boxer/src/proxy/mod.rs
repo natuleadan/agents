@@ -3,6 +3,10 @@
 
 use std::{collections::HashMap, net::SocketAddr, sync::Arc};
 
+use agents_protocol::{
+    HEADER_AGENT_IDENTITY_CODE, HEADER_AGENT_INSTALLATION_ID, HEADER_AGENT_ORGANIZATION,
+    InstallationIdentityHeaders,
+};
 use axum::{
     Json, Router,
     body::Body,
@@ -31,11 +35,55 @@ pub struct CredentialRule {
     pub header_value: String,
 }
 
+/// Host-level installation identity policy injected transparently on sandbox egress.
+#[derive(Debug, Clone, Default)]
+pub struct EgressIdentityPolicy {
+    pub identity: Option<InstallationIdentityHeaders>,
+    pub strict_egress: bool,
+}
+
+impl EgressIdentityPolicy {
+    /// Loads installation identity headers from host environment variables.
+    #[must_use]
+    pub fn from_env() -> Self {
+        let org = std::env::var("AGENTS_ORG_NAME")
+            .ok()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty());
+        let id = std::env::var("AGENTS_INSTALLATION_ID")
+            .ok()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty());
+        let code = std::env::var("AGENTS_IDENTITY_CODE")
+            .ok()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty());
+        let strict = std::env::var("AGENTS_STRICT_EGRESS")
+            .map(|v| matches!(v.to_ascii_lowercase().as_str(), "1" | "true" | "yes"))
+            .unwrap_or(false);
+
+        let identity = match (org, id) {
+            (Some(organization), Some(installation_id)) => Some(InstallationIdentityHeaders {
+                organization,
+                installation_id,
+                identity_code: code,
+            }),
+            _ => None,
+        };
+
+        Self {
+            identity,
+            strict_egress: strict,
+        }
+    }
+}
+
 #[derive(Clone)]
 struct ProxyState {
     network_egress_enabled: bool,
     allowed_hosts: Arc<Vec<String>>,
     credentials: Arc<HashMap<String, (String, String)>>,
+    identity_policy: Arc<EgressIdentityPolicy>,
     http: Client<HttpConnector, Full<Bytes>>,
 }
 
@@ -74,6 +122,28 @@ impl OutboundCredentialProxy {
         allowed_hosts: Vec<String>,
         rules: Vec<CredentialRule>,
     ) -> Result<Self, BoxerError> {
+        Self::start_with_identity(
+            bind_addr,
+            network_egress_enabled,
+            allowed_hosts,
+            rules,
+            EgressIdentityPolicy::from_env(),
+        )
+        .await
+    }
+
+    /// Starts the credential-injecting outbound proxy with an explicit installation identity policy.
+    ///
+    /// # Errors
+    ///
+    /// Refuses public non-private/loopback bind addresses and returns socket bind errors.
+    pub async fn start_with_identity(
+        bind_addr: SocketAddr,
+        network_egress_enabled: bool,
+        allowed_hosts: Vec<String>,
+        rules: Vec<CredentialRule>,
+        identity_policy: EgressIdentityPolicy,
+    ) -> Result<Self, BoxerError> {
         if !is_private_or_loopback_ip(bind_addr.ip()) {
             return Err(BoxerError::Proxy(format!(
                 "refusing public proxy bind address `{bind_addr}`"
@@ -101,6 +171,7 @@ impl OutboundCredentialProxy {
                     .collect(),
             ),
             credentials: Arc::new(credentials),
+            identity_policy: Arc::new(identity_policy),
             http,
         };
 
@@ -186,7 +257,13 @@ async fn handle_forward(
     let mut builder = Request::builder().method(method).uri(parsed);
     for (k, v) in &req.headers {
         let lower = k.to_ascii_lowercase();
-        if lower == "authorization" || lower == "host" || lower.starts_with("x-boxer-") {
+        if lower == "authorization"
+            || lower == "host"
+            || lower.starts_with("x-boxer-")
+            || lower == HEADER_AGENT_ORGANIZATION
+            || lower == HEADER_AGENT_INSTALLATION_ID
+            || lower == HEADER_AGENT_IDENTITY_CODE
+        {
             continue;
         }
         if let (Ok(name), Ok(val)) = (
@@ -195,6 +272,27 @@ async fn handle_forward(
         ) {
             builder = builder.header(name, val);
         }
+    }
+
+    if let Some(identity) = &state.identity_policy.identity
+        && identity.is_complete()
+    {
+        if let Ok(org_val) = HeaderValue::from_str(&identity.organization) {
+            builder = builder.header(HEADER_AGENT_ORGANIZATION, org_val);
+        }
+        if let Ok(id_val) = HeaderValue::from_str(&identity.installation_id) {
+            builder = builder.header(HEADER_AGENT_INSTALLATION_ID, id_val);
+        }
+        if let Some(code) = &identity.identity_code
+            && let Ok(code_val) = HeaderValue::from_str(code)
+        {
+            builder = builder.header(HEADER_AGENT_IDENTITY_CODE, code_val);
+        }
+    } else if state.identity_policy.strict_egress {
+        return json_error(
+            StatusCode::FORBIDDEN,
+            "installation identity headers are required for outbound sandbox egress",
+        );
     }
 
     if let Some((hdr_name, hdr_val)) = state.credentials.get(&host)

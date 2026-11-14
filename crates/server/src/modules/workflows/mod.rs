@@ -16,7 +16,7 @@ pub use services::{WorkflowService, evaluate_edge_condition, validate_dag_topolo
 
 #[derive(Module)]
 #[module(
-    imports = [crate::app::InfraModule, crate::modules::audit::AuditModule],
+    imports = [crate::app::InfraModule, crate::modules::audit::AuditModule, crate::modules::identity::IdentityModule],
     providers = [WorkflowService],
     controllers = [WorkflowsController, WebhookIngressController, SlugRenderController],
     exports = [WorkflowService],

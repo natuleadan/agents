@@ -39,6 +39,10 @@ use crate::{
         },
     },
     modules::{
+        a2a::{
+            A2aModule,
+            repositories::{A2aTaskStore, InMemoryA2aRepository, PgA2aRepository},
+        },
         audit::{
             AuditModule,
             repositories::{AuditStore, InMemoryAuditRepository, PgAuditRepository},
@@ -54,6 +58,10 @@ use crate::{
             repositories::{AutocronStore, InMemoryAutocronRepository, PgAutocronRepository},
         },
         gateway::{GatewayModule, controller::GatewayHttpState, services::GatewayService},
+        identity::{
+            IdentityModule,
+            repositories::{IdentityStore, InMemoryIdentityRepository, PgIdentityRepository},
+        },
         mcp::{McpModule, controller::McpHttpState, services::McpHostService},
         nodes::{NodeHttpState, NodeRegistryService, NodeRegistryStore, NodesModule},
         sessions::{
@@ -103,6 +111,8 @@ impl Module for InfraModule {
             .provider(ProviderDefinition::value(SwarmStore::default()))
             .provider(ProviderDefinition::value(WorkflowStore::default()))
             .provider(ProviderDefinition::value(AutocronStore::default()))
+            .provider(ProviderDefinition::value(IdentityStore::default()))
+            .provider(ProviderDefinition::value(A2aTaskStore::default()))
             .export::<ServerConfig>()
             .export::<AppCache>()
             .export::<AppEventBus>()
@@ -122,6 +132,8 @@ impl Module for InfraModule {
             .export::<SwarmStore>()
             .export::<WorkflowStore>()
             .export::<AutocronStore>()
+            .export::<IdentityStore>()
+            .export::<A2aTaskStore>()
             .lifecycle(
                 LifecycleDefinition::builder::<SecurityLifecycleHook>()
                     .guard_denied()
@@ -150,6 +162,8 @@ impl Module for InfraModule {
     AutocronModule,
     GatewayModule,
     McpModule,
+    IdentityModule,
+    A2aModule,
 ])]
 pub struct AppModule;
 
@@ -170,6 +184,8 @@ pub struct InfrastructureHandles {
     pub swarm_store: SwarmStore,
     pub workflow_store: WorkflowStore,
     pub autocron_store: AutocronStore,
+    pub identity_store: IdentityStore,
+    pub a2a_store: A2aTaskStore,
 }
 
 impl InfrastructureHandles {
@@ -205,6 +221,8 @@ impl InfrastructureHandles {
             swarm_store,
             workflow_store,
             autocron_store,
+            identity_store,
+            a2a_store,
         ) = match database.as_ref() {
             Some(db) => {
                 let pool = db.pool().clone();
@@ -216,7 +234,9 @@ impl InfrastructureHandles {
                     StreamStore(PgStreamRepository::new(pool.clone())),
                     SwarmStore(PgSwarmRepository::new(pool.clone())),
                     WorkflowStore(PgWorkflowRepository::new(pool.clone())),
-                    AutocronStore(PgAutocronRepository::new(pool)),
+                    AutocronStore(PgAutocronRepository::new(pool.clone())),
+                    IdentityStore(Arc::new(PgIdentityRepository::new(pool.clone()))),
+                    A2aTaskStore(Arc::new(PgA2aRepository::new(pool))),
                 )
             }
             None => (
@@ -228,6 +248,8 @@ impl InfrastructureHandles {
                 SwarmStore(InMemorySwarmRepository::new()),
                 WorkflowStore(InMemoryWorkflowRepository::new()),
                 AutocronStore(InMemoryAutocronRepository::new()),
+                IdentityStore(Arc::new(InMemoryIdentityRepository::default())),
+                A2aTaskStore(Arc::new(InMemoryA2aRepository::default())),
             ),
         };
 
@@ -247,6 +269,8 @@ impl InfrastructureHandles {
             swarm_store,
             workflow_store,
             autocron_store,
+            identity_store,
+            a2a_store,
         })
     }
 
@@ -276,6 +300,8 @@ impl InfrastructureHandles {
             swarm_store: SwarmStore(InMemorySwarmRepository::new()),
             workflow_store: WorkflowStore(InMemoryWorkflowRepository::new()),
             autocron_store: AutocronStore(InMemoryAutocronRepository::new()),
+            identity_store: IdentityStore(Arc::new(InMemoryIdentityRepository::default())),
+            a2a_store: A2aTaskStore(Arc::new(InMemoryA2aRepository::default())),
         }
     }
 }
@@ -376,6 +402,8 @@ pub async fn build_application(
         .override_provider(ProviderDefinition::value(infra.swarm_store))
         .override_provider(ProviderDefinition::value(infra.workflow_store))
         .override_provider(ProviderDefinition::value(infra.autocron_store))
+        .override_provider(ProviderDefinition::value(infra.identity_store))
+        .override_provider(ProviderDefinition::value(infra.a2a_store))
         .middleware(SecurityHeadersMiddleware::new(
             SecurityHeadersConfig::default(),
         ))
