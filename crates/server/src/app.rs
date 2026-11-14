@@ -5,13 +5,6 @@ use std::{
     time::Duration,
 };
 
-use axum::{
-    Router,
-    body::Body,
-    extract::Request as AxumRequest,
-    http::StatusCode,
-    response::{IntoResponse, Response},
-};
 use ironic::{
     AxumAdapter, OpenApiAxumApplication, OpenApiAxumExt, ProviderDefinition,
     prelude::*,
@@ -55,19 +48,9 @@ use crate::{
             AutocronModule,
             repositories::{AutocronStore, InMemoryAutocronRepository, PgAutocronRepository},
         },
-        gateway::{
-            GatewayModule,
-            controller::{GatewayHttpState, gateway_lazy_router},
-            services::GatewayService,
-        },
-        mcp::{
-            McpModule,
-            controller::{McpHttpState, protected_mcp_router},
-            services::McpHostService,
-        },
-        nodes::{
-            NodeHttpState, NodeRegistryService, NodeRegistryStore, NodesModule, traefik_lazy_router,
-        },
+        gateway::{GatewayModule, controller::GatewayHttpState, services::GatewayService},
+        mcp::{McpModule, controller::McpHttpState, services::McpHostService},
+        nodes::{NodeHttpState, NodeRegistryService, NodeRegistryStore, NodesModule},
         sessions::{
             SessionsModule,
             repositories::{InMemorySessionRepository, PgSessionRepository, SessionStore},
@@ -317,6 +300,38 @@ pub async fn build_application(
     let global_ip_rate_max = infra.config.rate_limit_max_requests.saturating_mul(10);
     let rate_win = infra.config.rate_limit_window_secs;
 
+    let enriched_openapi_cell = Arc::new(OnceLock::<String>::new());
+    let doc_cell = Arc::clone(&enriched_openapi_cell);
+
+    let rate_limiter =
+        RateLimitMiddleware::new(global_ip_rate_max, rate_win).with_key_resolver(Arc::new(|ctx| {
+            let req = ctx.request();
+            if let Some(agent_id) = req
+                .headers()
+                .get("x-agent-id")
+                .or_else(|| req.headers().get("x-box-id"))
+                .and_then(|h| h.to_str().ok())
+                .filter(|s| !s.is_empty())
+            {
+                return format!("agent:{agent_id}");
+            }
+            if let Some(api_key) = req
+                .headers()
+                .get("x-api-key")
+                .and_then(|h| h.to_str().ok())
+                .filter(|s| !s.is_empty())
+            {
+                return format!("key:{api_key}");
+            }
+            req.headers()
+                .get("x-forwarded-for")
+                .and_then(|v| v.to_str().ok())
+                .and_then(|all| all.split(',').next_back().map(str::trim))
+                .filter(|ip| !ip.is_empty())
+                .unwrap_or("127.0.0.1")
+                .to_owned()
+        }));
+
     let app = Application::builder()
         .module(AppModule::definition())
         .override_provider(ProviderDefinition::value(infra.config))
@@ -336,21 +351,47 @@ pub async fn build_application(
         .middleware(SecurityHeadersMiddleware::new(
             SecurityHeadersConfig::default(),
         ))
-        .middleware(RateLimitMiddleware::new(global_ip_rate_max, rate_win))
+        .middleware(rate_limiter)
         .middleware(CorsMiddleware::new(cors))
         .platform(
             AxumAdapter::new()
                 .compression()
+                .max_connections(10_000)
                 .request_body_limit(4 * 1024 * 1024)
                 .request_timeout(Duration::from_secs(30))
                 .configure_router(move |router| {
-                    mount_native_stream_and_mcp_routes(router, gw_cell, mcp_cell, nodes_cell)
+                    mount_native_stream_and_mcp_routes(
+                        router, gw_cell, mcp_cell, nodes_cell, doc_cell,
+                    )
                 })
                 .with_openapi(openapi_config),
         )
         .build()
         .await
         .map_err(|err| ServerError::Internal(format!("application build failed: {err}")))?;
+
+    {
+        use http_body_util::BodyExt;
+
+        let req = axum::http::Request::builder()
+            .uri("/openapi.raw.json")
+            .body(axum::body::Body::empty())
+            .map_err(|e| ServerError::Internal(e.to_string()))?;
+        let resp = match app.platform().router().clone().oneshot(req).await {
+            Ok(r) => r,
+            Err(_) => return Err(ServerError::Internal("openapi route unreachable".into())),
+        };
+        let Ok(collected) = resp.into_body().collect().await else {
+            return Err(ServerError::Internal("failed to read openapi body".into()));
+        };
+        let bytes = collected.to_bytes();
+        let mut spec: serde_json::Value =
+            serde_json::from_slice(&bytes).map_err(|e| ServerError::Internal(e.to_string()))?;
+        crate::openapi::enrich_openapi_spec(&mut spec);
+        let enriched_json =
+            serde_json::to_string(&spec).map_err(|e| ServerError::Internal(e.to_string()))?;
+        let _ = enriched_openapi_cell.set(enriched_json);
+    }
 
     let auth = app
         .container()
@@ -385,85 +426,6 @@ pub async fn build_application(
     Ok(app)
 }
 
-/// Spawns a periodic background worker enforcing [`AuditService::prune_expired`] retention.
-///
-/// # Errors
-///
-/// Returns [`ServerError`] when [`AuditService`] cannot be resolved from the container.
-pub async fn start_retention_worker(
-    app: &Application<OpenApiAxumApplication>,
-    interval: Duration,
-) -> Result<tokio::task::JoinHandle<()>, ServerError> {
-    let audit = app
-        .container()
-        .resolve::<crate::modules::audit::services::AuditService>()
-        .await
-        .map_err(|e| ServerError::Internal(e.to_string()))?;
+pub use crate::infra::workers::start_retention_worker;
 
-    let handle = tokio::spawn(async move {
-        let mut ticker = tokio::time::interval(interval);
-        ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-        ticker.tick().await;
-        loop {
-            ticker.tick().await;
-            match audit.prune_expired().await {
-                Ok(pruned) if pruned > 0 => {
-                    tracing::info!(pruned, "audit retention worker archived expired entries");
-                }
-                Ok(_) => {}
-                Err(err) => {
-                    tracing::warn!(error = %err, "audit retention worker iteration failed");
-                }
-            }
-        }
-    });
-    Ok(handle)
-}
-
-fn mount_native_stream_and_mcp_routes(
-    router: Router,
-    gw_cell: Arc<OnceLock<GatewayHttpState>>,
-    mcp_cell: Arc<OnceLock<McpHttpState>>,
-    nodes_cell: Arc<OnceLock<NodeHttpState>>,
-) -> Router {
-    let scalar_cfg = serde_json::json!({
-        "url": "/openapi.json",
-        "theme": "purple",
-        "hideModels": false,
-        "showSidebar": true
-    });
-    let scalar_cfg_slash = scalar_cfg.clone();
-
-    router
-        .merge(crate::infra::webui::webui_router())
-        .merge(gateway_lazy_router(gw_cell))
-        .merge(traefik_lazy_router(nodes_cell))
-        .merge(scalar_api_reference::axum::router("/docs", &scalar_cfg))
-        .route(
-            "/docs/",
-            axum::routing::get(move || async move {
-                scalar_api_reference::axum::scalar_response(
-                    &scalar_cfg_slash,
-                    Some("/docs/scalar.js"),
-                )
-            }),
-        )
-        .route(
-            "/mcp",
-            axum::routing::post(move |req: AxumRequest<Body>| {
-                let mcp_cell = Arc::clone(&mcp_cell);
-                async move { dispatch_lazy_mcp(req, mcp_cell).await }
-            }),
-        )
-}
-
-async fn dispatch_lazy_mcp(req: AxumRequest<Body>, cell: Arc<OnceLock<McpHttpState>>) -> Response {
-    let Some(state) = cell.get() else {
-        return (StatusCode::SERVICE_UNAVAILABLE, "mcp initializing").into_response();
-    };
-    let sub_router = protected_mcp_router(state.clone());
-    match sub_router.oneshot(req).await {
-        Ok(resp) => resp,
-        Err(_) => StatusCode::INTERNAL_SERVER_ERROR.into_response(),
-    }
-}
+pub use crate::infra::webui::mount_native_stream_and_mcp_routes;

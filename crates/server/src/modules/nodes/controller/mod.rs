@@ -13,14 +13,19 @@ use axum::{
 use ironic::prelude::*;
 
 use crate::{
-    infra::error::{ErrorResponse, validate_dto},
+    infra::{
+        config::ServerConfig,
+        error::{ErrorResponse, validate_dto},
+    },
     modules::{
         auth::{
             entities::AuthenticatedActor,
             guards::{AuthGuard, CurrentActor, require_scope},
         },
         nodes::{
-            dto::{NodeHeartbeatDto, PreviewSyncDto},
+            dto::{
+                NodeHeartbeatDto, NodeRegistrationDto, NodeRegistrationResponse, PreviewSyncDto,
+            },
             entities::{NodeListResponse, PreviewSyncAck},
             services::NodeRegistryService,
         },
@@ -34,15 +39,16 @@ pub struct NodeHttpState {
 }
 
 #[controller("/api/v1/nodes")]
-#[guard(AuthGuard)]
 #[derive(Injectable)]
 pub struct NodesController {
     service: Arc<NodeRegistryService>,
+    config: Arc<ServerConfig>,
 }
 
 #[routes]
 impl NodesController {
     #[get]
+    #[guard(AuthGuard)]
     #[api(
         summary = "List active auto-registered private-VLAN Boxer nodes",
         tag = "Nodes",
@@ -61,6 +67,7 @@ impl NodesController {
     }
 
     #[post("/heartbeat")]
+    #[guard(AuthGuard)]
     #[api(
         summary = "Register or refresh a private-VLAN Boxer worker node",
         tag = "Nodes",
@@ -83,7 +90,30 @@ impl NodesController {
         Ok(Json(node))
     }
 
+    #[post("/register")]
+    #[api(
+        summary = "Bootstrap and authenticate Boxer worker node via mutual HMAC-SHA256 handshake",
+        tag = "Nodes"
+    )]
+    #[body(json = NodeRegistrationDto)]
+    #[resp(200, "Mutual registration acknowledgment", json = NodeRegistrationResponse)]
+    #[resp(400, "Bad Request", json = ErrorResponse)]
+    #[resp(422, "Validation error", json = ErrorResponse)]
+    #[resp(500, "Internal server error", json = ErrorResponse)]
+    async fn register(
+        &self,
+        #[body] dto: NodeRegistrationDto,
+    ) -> Result<Json<NodeRegistrationResponse>, HttpError> {
+        validate_dto(&dto)?;
+        let res = self
+            .service
+            .register_node_hmac(&dto, &self.config.cluster_secret)
+            .await?;
+        Ok(Json(res))
+    }
+
     #[post("/previews")]
+    #[guard(AuthGuard)]
     #[api(
         summary = "Publish or revoke a distributed Traefik preview route",
         tag = "Nodes",

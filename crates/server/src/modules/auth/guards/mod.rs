@@ -169,3 +169,68 @@ pub fn ensure_owner(actor: &AuthenticatedActor, owner_id: &str) -> Result<(), Ht
         ))
     }
 }
+
+/// Declarative route guard requiring a specific [`ApiKeyScope`].
+pub struct ScopeGuard {
+    required: ApiKeyScope,
+}
+
+impl ScopeGuard {
+    #[must_use]
+    pub const fn new(required: ApiKeyScope) -> Self {
+        Self { required }
+    }
+}
+
+impl Guard for ScopeGuard {
+    fn can_activate<'a>(&'a self, context: &'a mut RequestContext) -> GuardFuture<'a> {
+        Box::pin(async move {
+            let actor = current_actor(context)?;
+            require_scope(&actor, self.required.clone())?;
+            Ok(GuardDecision::Allow)
+        })
+    }
+}
+
+/// Circuit breaker tracking runaway agent loops and auto-pausing abusive subagents.
+#[derive(Clone, Default)]
+pub struct AgentCircuitBreaker {
+    violations:
+        std::sync::Arc<tokio::sync::RwLock<std::collections::HashMap<String, (usize, i64)>>>,
+}
+
+impl AgentCircuitBreaker {
+    #[must_use]
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    /// Records a rate-limit event for an agent. Returns `true` if circuit breaker tripped.
+    pub async fn record_violation(&self, agent_id: &str, now: i64) -> bool {
+        let mut map = self.violations.write().await;
+        let entry = map.entry(agent_id.to_string()).or_insert((0, now));
+        if now.saturating_sub(entry.1) > 60_000 {
+            *entry = (1, now);
+            false
+        } else {
+            entry.0 += 1;
+            entry.0 >= 3
+        }
+    }
+
+    /// Checks whether the circuit breaker is currently tripped for `agent_id`.
+    pub async fn is_tripped(&self, agent_id: &str, now: i64) -> bool {
+        let map = self.violations.read().await;
+        if let Some((count, timestamp)) = map.get(agent_id) {
+            now.saturating_sub(*timestamp) <= 60_000 && *count >= 3
+        } else {
+            false
+        }
+    }
+
+    /// Resets the circuit breaker for `agent_id`.
+    pub async fn reset(&self, agent_id: &str) {
+        let mut map = self.violations.write().await;
+        map.remove(agent_id);
+    }
+}

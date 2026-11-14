@@ -78,6 +78,7 @@ pub struct ServerConfig {
     pub public_url: String,
     pub trusted_origins: Vec<String>,
     pub jwt_secret: String,
+    pub cluster_secret: String,
     pub jwt_access_ttl_secs: u64,
     pub refresh_ttl_secs: u64,
     pub admin_email: Option<String>,
@@ -115,6 +116,7 @@ impl fmt::Debug for ServerConfig {
             .field("public_url", &self.public_url)
             .field("trusted_origins", &self.trusted_origins)
             .field("jwt_secret", &"[REDACTED]")
+            .field("cluster_secret", &"[REDACTED]")
             .field("jwt_access_ttl_secs", &self.jwt_access_ttl_secs)
             .field("refresh_ttl_secs", &self.refresh_ttl_secs)
             .field("admin_email", &self.admin_email)
@@ -256,6 +258,9 @@ impl ServerConfig {
             public_url: env_or_local("AGENTS_PUBLIC_URL", "http://127.0.0.1:8080"),
             trusted_origins,
             jwt_secret,
+            cluster_secret: opt("AGENTS_CLUSTER_SECRET")
+                .or_else(|| opt("BOXER_CLUSTER_SECRET"))
+                .unwrap_or_else(|| "dev-boxer-cluster-secret".to_owned()),
             jwt_access_ttl_secs: parse_u64("AGENTS_JWT_ACCESS_TTL_SECS", 900)?,
             refresh_ttl_secs: parse_u64("AGENTS_REFRESH_TTL_SECS", 2_592_000)?,
             admin_email: opt("AGENTS_ADMIN_EMAIL"),
@@ -295,6 +300,7 @@ impl ServerConfig {
             public_url: "http://127.0.0.1".to_owned(),
             trusted_origins: vec!["http://127.0.0.1".to_owned()],
             jwt_secret: generate_ephemeral_secret(),
+            cluster_secret: "dev-boxer-cluster-secret".to_owned(),
             jwt_access_ttl_secs: 900,
             refresh_ttl_secs: 86_400,
             admin_email: None,

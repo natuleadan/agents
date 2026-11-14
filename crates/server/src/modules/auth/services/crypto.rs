@@ -137,6 +137,40 @@ pub fn now_secs() -> u64 {
         .map_or(0, |d| d.as_secs())
 }
 
+/// Computes RFC 2104 HMAC-SHA256 for a secret key and message.
+#[must_use]
+pub fn compute_hmac_sha256(key: &[u8], msg: &[u8]) -> [u8; 32] {
+    const BLOCK_SIZE: usize = 64;
+    let mut k_block = [0u8; BLOCK_SIZE];
+    if key.len() > BLOCK_SIZE {
+        let hashed = Sha256::digest(key);
+        k_block[..32].copy_from_slice(&hashed);
+    } else {
+        k_block[..key.len()].copy_from_slice(key);
+    }
+    let mut o_pad = [0x5cu8; BLOCK_SIZE];
+    let mut i_pad = [0x36u8; BLOCK_SIZE];
+    for i in 0..BLOCK_SIZE {
+        o_pad[i] ^= k_block[i];
+        i_pad[i] ^= k_block[i];
+    }
+    let mut inner = Sha256::new();
+    inner.update(i_pad);
+    inner.update(msg);
+    let inner_hash = inner.finalize();
+
+    let mut outer = Sha256::new();
+    outer.update(o_pad);
+    outer.update(inner_hash);
+    outer.finalize().into()
+}
+
+/// Computes lowercase hex-encoded HMAC-SHA256.
+#[must_use]
+pub fn compute_hmac_hex(key: &[u8], msg: &[u8]) -> String {
+    hex::encode(compute_hmac_sha256(key, msg))
+}
+
 #[cfg(test)]
 mod tests {
     #![allow(clippy::unwrap_used, clippy::expect_used)]

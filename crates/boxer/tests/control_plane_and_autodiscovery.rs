@@ -64,7 +64,7 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
     let service = Arc::new(BoxerControlPlaneService::new(Arc::clone(&cfg)));
     let app = build_control_plane_router(Arc::clone(&service), &cfg);
 
-    // 1. Health check
+    // 1. Health check & OpenAPI / Scalar docs
     let req = Request::builder()
         .uri("/health/ready")
         .body(Body::empty())
@@ -72,7 +72,24 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
     let resp = app.clone().oneshot(req).await.unwrap();
     assert_eq!(resp.status(), StatusCode::OK);
 
-    // 2. Provision sandbox
+    let doc_req = Request::builder()
+        .uri("/openapi.json")
+        .body(Body::empty())
+        .unwrap();
+    let doc_resp = app.clone().oneshot(doc_req).await.unwrap();
+    assert_eq!(doc_resp.status(), StatusCode::OK);
+    let doc_bytes = axum::body::to_bytes(doc_resp.into_body(), 1024 * 64)
+        .await
+        .unwrap();
+    let spec: serde_json::Value = serde_json::from_slice(&doc_bytes).unwrap();
+    assert_eq!(spec["info"]["title"], "agents-boxer API");
+    assert!(spec["paths"]["/v1/box"].is_object());
+
+    let scalar_req = Request::builder().uri("/docs").body(Body::empty()).unwrap();
+    let scalar_resp = app.clone().oneshot(scalar_req).await.unwrap();
+    assert_eq!(scalar_resp.status(), StatusCode::OK);
+
+    // 2. Provision sandbox via /v1/box
     let prov_body = serde_json::to_vec(&ProvisionBoxRequest {
         session_id: "sess-p15".into(),
         task_id: "task-p15".into(),
@@ -83,7 +100,7 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
 
     let req = Request::builder()
         .method("POST")
-        .uri("/v2/box")
+        .uri("/v1/box")
         .header("Authorization", "Bearer super-secret-cluster-token")
         .header("Content-Type", "application/json")
         .body(Body::from(prov_body))
@@ -107,7 +124,7 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
 
     let req = Request::builder()
         .method("POST")
-        .uri(format!("/v2/box/{}/files", prov.box_id))
+        .uri(format!("/v1/box/{}/files", prov.box_id))
         .header("Authorization", "Bearer super-secret-cluster-token")
         .header("Content-Type", "application/json")
         .body(Body::from(write_body))
@@ -119,7 +136,7 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
     // 4. Read file back from sandbox VFS
     let req = Request::builder()
         .method("GET")
-        .uri(format!("/v2/box/{}/files?path=src/main.txt", prov.box_id))
+        .uri(format!("/v1/box/{}/files?path=src/main.txt", prov.box_id))
         .header("Authorization", "Bearer super-secret-cluster-token")
         .body(Body::empty())
         .unwrap();
@@ -136,10 +153,11 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
     let req = Request::builder()
         .method("GET")
         .uri(format!(
-            "/v2/box/{}/files?path=../../etc/passwd",
+            "/v1/box/{}/files?path=../../etc/passwd",
             prov.box_id
         ))
         .header("Authorization", "Bearer super-secret-cluster-token")
+        .header("Content-Type", "application/json")
         .body(Body::empty())
         .unwrap();
 
@@ -155,7 +173,7 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
 
     let req = Request::builder()
         .method("POST")
-        .uri(format!("/v2/box/{}/exec", prov.box_id))
+        .uri(format!("/v1/box/{}/exec", prov.box_id))
         .header("Authorization", "Bearer super-secret-cluster-token")
         .header("Content-Type", "application/json")
         .body(Body::from(exec_body))
@@ -173,7 +191,7 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
     // 7. Read sandbox status
     let req = Request::builder()
         .method("GET")
-        .uri(format!("/v2/box/{}/status", prov.box_id))
+        .uri(format!("/v1/box/{}/status", prov.box_id))
         .header("Authorization", "Bearer super-secret-cluster-token")
         .body(Body::empty())
         .unwrap();
@@ -189,7 +207,7 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
     // 8. Teardown sandbox
     let req = Request::builder()
         .method("DELETE")
-        .uri(format!("/v2/box/{}", prov.box_id))
+        .uri(format!("/v1/box/{}", prov.box_id))
         .header("Authorization", "Bearer super-secret-cluster-token")
         .body(Body::empty())
         .unwrap();
@@ -201,6 +219,25 @@ async fn anti_regression_boxer_control_plane_crud_and_vfs() {
         .unwrap();
     let teardown: TeardownBoxResponse = serde_json::from_slice(&bytes).unwrap();
     assert_eq!(teardown.status, "destroyed");
+
+    // 9. Backward compatibility alias: /v2/box works identically
+    let req_v2 = Request::builder()
+        .method("POST")
+        .uri("/v2/box")
+        .header("Authorization", "Bearer super-secret-cluster-token")
+        .header("Content-Type", "application/json")
+        .body(Body::from(
+            serde_json::to_vec(&ProvisionBoxRequest {
+                session_id: "sess-v2-alias".into(),
+                task_id: "task-v2-alias".into(),
+                profile: None,
+                env: HashMap::new(),
+            })
+            .unwrap(),
+        ))
+        .unwrap();
+    let resp_v2 = app.clone().oneshot(req_v2).await.unwrap();
+    assert_eq!(resp_v2.status(), StatusCode::CREATED);
 }
 
 #[tokio::test]
@@ -220,7 +257,7 @@ async fn anti_regression_boxer_control_plane_auth_and_rfc7807() {
     // Invariant 1: Missing auth header returns 401 Unauthorized with RFC 7807 problem details
     let req = Request::builder()
         .method("POST")
-        .uri("/v2/box")
+        .uri("/v1/box")
         .header("Content-Type", "application/json")
         .body(Body::from(req_body.clone()))
         .unwrap();
